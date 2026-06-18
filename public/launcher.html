@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SupaCaked — Game Arcade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@600;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{ --ink:#f6f3ff; --muted:#a79fc4; --amber:#fbbf24; --teal:#22d3ee; --pink:#ff5c8a; --violet:#a855f7; --green:#34d399; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;background:#07060f;color:var(--ink);font-family:'Inter',system-ui,sans-serif;}
+  body{ background:
+      radial-gradient(120% 80% at 50% -10%, #2a1750 0%, rgba(7,6,15,0) 60%),
+      radial-gradient(90% 60% at 100% 110%, #3a1f5c 0%, rgba(7,6,15,0) 55%), #07060f;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:40px 20px 60px; overflow-x:hidden; }
+  .stars{ position:fixed; inset:0; pointer-events:none; }
+  header{ text-align:center; margin-bottom:10px; }
+  .logo{ font-family:'Anton',sans-serif; font-size:clamp(48px,10vw,116px); line-height:.9; margin:0;
+    background:linear-gradient(90deg, var(--amber), var(--pink) 45%, var(--teal)); -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 0 30px rgba(168,85,247,.45)); letter-spacing:1px; }
+  .tagline{ color:var(--muted); font-weight:800; letter-spacing:5px; text-transform:uppercase; font-size:clamp(11px,1.5vw,15px); margin-top:8px; }
+
+  .roombar{ display:flex; align-items:center; gap:24px; flex-wrap:wrap; justify-content:center;
+    background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.09); border-radius:22px; padding:20px 26px; margin-top:26px; width:min(1040px,94vw); }
+  #qr{ width:120px; height:120px; background:#fff; border-radius:12px; padding:8px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; }
+  .joininfo .k{ font-size:12px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); font-weight:800; }
+  .joininfo .url{ font-family:'Anton',sans-serif; font-size:clamp(18px,2vw,26px); margin:2px 0 10px; }
+  .joininfo .code{ display:inline-block; font-family:'Anton',sans-serif; font-size:30px; letter-spacing:7px; background:var(--green); color:#06231a; padding:3px 16px; border-radius:11px; }
+  .players{ flex:1; min-width:220px; }
+  .players h2{ font-family:'Anton',sans-serif; font-size:18px; color:var(--muted); letter-spacing:2px; margin:0 0 8px; }
+  .plist{ display:flex; flex-wrap:wrap; gap:8px; }
+  .plist .p{ background:rgba(255,255,255,.06); border-radius:999px; padding:6px 14px 6px 8px; font-weight:800; font-size:15px; display:flex; align-items:center; gap:8px; }
+  .plist .p i{ width:14px; height:14px; border-radius:5px; box-shadow:0 0 10px currentColor; }
+  .plist .p.lead::after{ content:'★'; color:var(--amber); }
+  .plist .p.off{ opacity:.4; }
+  .empty{ color:var(--muted); font-weight:700; font-size:15px; }
+
+  .cue{ margin-top:18px; color:var(--teal); font-weight:800; font-size:16px; min-height:22px; text-align:center; }
+
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:24px; width:min(1040px,94vw); margin-top:22px; }
+  .card{ position:relative; border-radius:24px; padding:28px; cursor:pointer; text-decoration:none; color:var(--ink);
+    border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.035); overflow:hidden;
+    transition:transform .14s ease, box-shadow .2s ease, border-color .2s ease; min-height:210px; display:flex; flex-direction:column; justify-content:flex-end; }
+  .card:hover{ transform:translateY(-6px); border-color:rgba(255,255,255,.25); box-shadow:0 18px 50px rgba(0,0,0,.5); }
+  .card .glow{ position:absolute; inset:-40% -10% auto -10%; height:70%; filter:blur(46px); opacity:.55; z-index:0; }
+  .card .art{ position:absolute; top:20px; right:24px; font-size:56px; z-index:1; filter:drop-shadow(0 6px 14px rgba(0,0,0,.5)); }
+  .card .badge{ position:relative; z-index:1; font-size:12px; font-weight:900; letter-spacing:3px; text-transform:uppercase; color:var(--muted); }
+  .card h2{ position:relative; z-index:1; font-family:'Anton',sans-serif; font-size:38px; margin:8px 0 6px; line-height:.95; }
+  .card p{ position:relative; z-index:1; color:var(--muted); font-weight:700; font-size:14px; margin:0; line-height:1.5; }
+  .card .play{ position:relative; z-index:1; margin-top:12px; align-self:flex-start; font-family:'Anton',sans-serif; letter-spacing:1px; background:#fff; color:#1a1320; padding:9px 18px; border-radius:11px; font-size:17px; }
+  .cannons .glow{ background:linear-gradient(90deg,#ff5c49,#a855f7); } .cannons h2{ color:#ffd2c4; }
+  .frog .glow{ background:linear-gradient(90deg,#34d399,#22d3ee); } .frog h2{ color:#b8f5d8; }
+  .card.hl{ transform:translateY(-6px) scale(1.02); border-color:#fff; box-shadow:0 0 0 4px rgba(255,255,255,.28), 0 20px 54px rgba(0,0,0,.55); }
+  .soon{ opacity:.5; cursor:default; } .soon:hover{ transform:none; box-shadow:none; border-color:rgba(255,255,255,.10); }
+  .soon .glow{ background:linear-gradient(90deg,#64748b,#334155); }
+  footer{ margin-top:40px; color:var(--muted); font-size:13px; font-weight:700; text-align:center; }
+</style>
+</head>
+<body>
+<canvas class="stars" id="stars"></canvas>
+<header>
+  <h1 class="logo">SUPACAKED</h1>
+  <div class="tagline">Couch Game Arcade</div>
+</header>
+
+<div class="roombar">
+  <div id="qr"></div>
+  <div class="joininfo">
+    <div class="k">On your phone, open</div>
+    <div class="url" id="joinUrl">loading…</div>
+    <div class="k">Room code</div><br><span class="code" id="roomCode">····</span>
+  </div>
+  <div class="players">
+    <h2>FOWL &amp; FRIENDS</h2>
+    <div class="plist" id="plist"><div class="empty">No one's joined yet…</div></div>
+  </div>
+</div>
+<div class="cue" id="cue"></div>
+
+<div class="grid">
+  <a class="card cannons" data-game="cannons" href="/couch">
+    <div class="glow"></div><div class="art">🎯</div>
+    <div class="badge">2–8 players · phone controllers</div>
+    <h2>Couch Cannons</h2>
+    <p>Last-tank-standing artillery brawl. Aim from your phone, blow your friends off the map.</p>
+    <span class="play">PLAY ▸</span>
+  </a>
+  <a class="card frog" data-game="frogger" href="/frogger">
+    <div class="glow"></div><div class="art">🦆</div>
+    <div class="badge">2–8 players · phone controllers</div>
+    <h2>Fowl Crossing</h2>
+    <p>Dodge traffic, ride the logs, race for the fish. Hop on a buddy's back for a piggyback ride!</p>
+    <span class="play">PLAY ▸</span>
+  </a>
+  <div class="card soon">
+    <div class="glow"></div><div class="art">🕹️</div>
+    <div class="badge">coming soon</div>
+    <h2>More Games</h2>
+    <p>New SupaCaked arcade titles are baking…</p>
+  </div>
+</div>
+
+<footer>🍰 SupaCaked · open on the TV, join from your phones</footer>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@gh-pages/qrcode.min.js"></script>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  let roomCode = (params.get('room') || '').toUpperCase();
+  let joinBase = '';
+  const roster = new Map();           // id -> {id,name,color,connected}
+  const socket = io();
+
+  function leaderId(){ const c=[...roster.values()].filter(p=>p.connected).sort((a,b)=>a.id-b.id); return c[0]?c[0].id:null; }
+  function gameUrl(game){ const c='?room='+roomCode; return game==='cannons'?'/couch'+c : game==='frogger'?'/frogger'+c : '/'+c; }
+
+  socket.on('connect', ()=> socket.emit('host:hello', { code: roomCode || null }));
+  socket.on('host:room', ({ code, joinUrl })=>{
+    roomCode = code; joinBase = joinUrl;
+    history.replaceState(null,'', '/?room='+code);                 // keep the room across refresh/navigation
+    $('roomCode').textContent = code;
+    const full = joinUrl + '?room=' + code;
+    $('joinUrl').textContent = full.replace(/^https?:\/\//,'');
+    $('qr').innerHTML=''; try{ new QRCode($('qr'), { text: full, width:104, height:104, correctLevel: QRCode.CorrectLevel.M }); }catch(e){ $('qr').textContent='QR'; }
+    // game tiles carry the room so a TV click stays in the same room
+    document.querySelectorAll('.card[data-game]').forEach(c=> c.setAttribute('href', gameUrl(c.dataset.game)));
+  });
+  socket.on('host:roster', (arr)=>{ roster.clear(); arr.forEach(p=>roster.set(p.id,{...p})); renderRoster(); });
+  socket.on('host:playerJoined', (p)=>{ roster.set(p.id,{...p,connected:true}); renderRoster(); });
+  socket.on('host:playerLeft', ({id})=>{ const r=roster.get(id); if(r) r.connected=false; renderRoster(); });
+  // phone drives the menu: only the room leader may move the cursor / launch
+  function highlightCard(idx){ const cards=[...document.querySelectorAll('.card[data-game]')]; cards.forEach((c,i)=>c.classList.toggle('hl', i===idx)); }
+  highlightCard(0);
+  socket.on('host:input', ({id,type,payload})=>{ if(id!==leaderId()) return;
+    if(type==='menu'){ highlightCard(payload&&payload.index); return; }
+    if(type==='selectGame'){ const g=payload&&payload.game; if(g==='cannons'||g==='frogger') location.href=gameUrl(g); } });
+
+  function renderRoster(){
+    const el=$('plist'), ps=[...roster.values()], lead=leaderId();
+    if(!ps.length){ el.innerHTML='<div class="empty">No one\'s joined yet…</div>'; }
+    else { el.innerHTML=''; ps.forEach(p=>{ const d=document.createElement('div'); d.className='p'+(p.connected?'':' off')+(p.id===lead?' lead':'');
+      d.innerHTML='<i style="background:'+p.color+';color:'+p.color+'"></i>'+p.name; el.appendChild(d); }); }
+    const conn=ps.filter(p=>p.connected); const lp=conn.find(p=>p.id===lead);
+    $('cue').textContent = conn.length ? ('★ '+(lp?lp.name:'First player')+': pick a game on your phone ⟶') : 'Join from your phone to start playing';
+    broadcast();
+  }
+  // tell the phones we're on the menu so they show the game picker
+  let lastB=0;
+  function broadcast(){ const now=Date.now(); if(now-lastB<150) return; lastB=now;
+    socket.emit('host:state', { game:'menu', leaderId:leaderId(),
+      players:[...roster.values()].map(p=>({id:p.id,name:p.name,color:p.color,connected:p.connected})) }); }
+  setInterval(broadcast, 1000);
+
+  // starfield
+  const cv=$('stars'), ctx=cv.getContext('2d'); let stars=[];
+  function resize(){ cv.width=innerWidth; cv.height=innerHeight; stars=Array.from({length:120},()=>({x:Math.random()*cv.width,y:Math.random()*cv.height,r:Math.random()*1.6+0.3,s:Math.random()*0.3+0.05,t:Math.random()*6})); }
+  resize(); addEventListener('resize',resize);
+  (function loop(){ ctx.clearRect(0,0,cv.width,cv.height); const now=performance.now()/700;
+    for(const s of stars){ s.y+=s.s; if(s.y>cv.height) s.y=0; ctx.globalAlpha=0.3+0.5*Math.abs(Math.sin(now+s.t)); ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,7); ctx.fill(); }
+    ctx.globalAlpha=1; requestAnimationFrame(loop); })();
+})();
+</script>
+</body>
+</html>

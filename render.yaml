@@ -1,0 +1,14 @@
+# Render.com blueprint — deploys SupaCaked as an always-on Node + WebSocket server.
+# After the first deploy, add your custom domain (www.supacaked.com) in the Render
+# dashboard and point GoDaddy DNS at the CNAME target Render gives you.
+services:
+  - type: web
+    name: supacaked
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /config
+    envVars:
+      - key: PUBLIC_URL
+        value: https://www.supacaked.com

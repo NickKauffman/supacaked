@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Couch Cannons</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@600;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#f6f3ff; --muted:#a79fc4; --amber:#fbbf24; --teal:#22d3ee; --fire:#ff5c49;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#07060f;overflow:hidden;font-family:'Inter',system-ui,sans-serif;color:var(--ink);}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
+  canvas{width:min(100vw, calc(100vh * 16 / 9));height:auto;display:block;background:#07060f;}
+
+  .overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;}
+  .overlay.show{display:flex;}
+
+  /* ---- Lobby ---- */
+  #lobby{background:radial-gradient(120% 90% at 50% 0%, #2a2140 0%, #07060f 65%);}
+  .lobby-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:48px;width:min(1180px,90vw);align-items:center;}
+  .title{font-family:'Anton',sans-serif;font-size:clamp(48px,8vw,118px);line-height:.86;margin:0;text-shadow:0 0 32px rgba(34,211,238,.35);}
+  .title .c1{color:var(--amber);} .title .c2{color:var(--teal);}
+  .tag{color:var(--muted);font-size:clamp(15px,1.5vw,21px);font-weight:700;margin:18px 0 26px;max-width:38ch;line-height:1.5;}
+  .joinbox{display:flex;align-items:center;gap:22px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:22px;padding:22px;}
+  #qr{width:148px;height:148px;background:#fff;border-radius:14px;padding:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;}
+  #qr img,#qr canvas{display:block;}
+  .joininfo .k{font-size:13px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);font-weight:800;}
+  .joininfo .url{font-family:'Anton',sans-serif;font-size:clamp(22px,2.4vw,34px);margin:4px 0 14px;}
+  .joininfo .code{display:inline-block;font-family:'Anton',sans-serif;font-size:34px;letter-spacing:8px;background:var(--amber);color:#1a1320;padding:4px 16px;border-radius:12px;}
+  .roster{display:flex;flex-direction:column;gap:12px;}
+  .roster h2{font-family:'Anton',sans-serif;font-size:24px;margin:0 0 6px;color:var(--muted);letter-spacing:2px;}
+  .rlist{display:flex;flex-direction:column;gap:10px;min-height:60px;}
+  .pill{display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.05);border-radius:14px;padding:12px 16px;font-size:22px;font-weight:800;}
+  .pill i{width:22px;height:22px;border-radius:7px;flex:0 0 auto;box-shadow:0 0 14px currentColor;}
+  .pill.off{opacity:.4;}
+  .empty-hint{color:var(--muted);font-weight:700;font-size:18px;padding:8px 2px;}
+  .startcue{margin-top:18px;color:var(--teal);font-weight:800;font-size:18px;min-height:24px;}
+
+  /* ---- Game over ---- */
+  #over{background:rgba(7,6,15,.82);backdrop-filter:blur(3px);flex-direction:column;gap:10px;}
+  #over .crown{font-size:64px;}
+  #over h1{font-family:'Anton',sans-serif;font-size:clamp(40px,7vw,92px);margin:0;}
+  #over .sub{color:var(--muted);font-weight:800;font-size:20px;}
+  .homelink{position:fixed;bottom:14px;left:16px;z-index:30;color:#f6f3ff;text-decoration:none;font-weight:900;font-size:14px;background:rgba(0,0,0,.45);padding:8px 14px;border-radius:10px;}
+  .homelink:hover{background:rgba(0,0,0,.7);}
+</style>
+</head>
+<body>
+<a class="homelink" href="/">← Games</a>
+<div id="stage"><canvas id="cv" width="1920" height="1080"></canvas></div>
+
+<!-- LOBBY -->
+<div id="lobby" class="overlay show">
+  <div class="lobby-grid">
+    <div>
+      <h1 class="title"><span class="c1">COUCH</span><br><span class="c2">CANNONS</span></h1>
+      <p class="tag">A 2–8 player artillery brawl. Grab your phone, join the room, and blow your friends off the map. Last tank standing wins.</p>
+      <div class="joinbox">
+        <div id="qr"></div>
+        <div class="joininfo">
+          <div class="k">On your phone, open</div>
+          <div class="url" id="joinUrl">loading…</div>
+          <div class="k">Room code</div><br>
+          <span class="code" id="roomCode">····</span>
+        </div>
+      </div>
+    </div>
+    <div class="roster">
+      <h2>PLAYERS</h2>
+      <div class="rlist" id="rlist"><div class="empty-hint">No one's joined yet…</div></div>
+      <div class="startcue" id="startcue"></div>
+    </div>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="over" class="overlay">
+  <div class="crown">🏆</div>
+  <h1 id="winnerName">—</h1>
+  <div class="sub" id="overSub">The first player can start a rematch from their phone.</div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@gh-pages/qrcode.min.js"></script>
+<script>
+(function(){
+  "use strict";
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;          // 1920 x 1080 internal world
+  const socket = io();
+  const ROOM = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
+
+  // ============ SOUND (Web Audio — all synthesized, no files) ============
+  const SFX = (function(){
+    let ctx = null, master = null, noiseBuf = null;
+    function init(){
+      if(ctx) return;
+      const AC = window.AudioContext || window.webkitAudioContext; if(!AC) return;
+      ctx = new AC();
+      master = ctx.createGain(); master.gain.value = 0.55; master.connect(ctx.destination);
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i] = Math.random()*2 - 1;
+    }
+    function on(){ init(); if(ctx && ctx.state === 'suspended') ctx.resume(); }
+    function env(g, t0, a, dur, peak){
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(peak, t0 + a);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    }
+    function tone(o){
+      if(!ctx) return; const t0 = ctx.currentTime + (o.delay||0), dur = o.dur||0.3;
+      const osc = ctx.createOscillator(); osc.type = o.type||'sine';
+      osc.frequency.setValueAtTime(o.f, t0);
+      if(o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(1, o.f2), t0 + dur);
+      const g = ctx.createGain(); env(g, t0, o.a||0.006, dur, o.gain||0.3);
+      osc.connect(g); g.connect(master); osc.start(t0); osc.stop(t0 + dur + 0.05);
+    }
+    function noise(o){
+      if(!ctx) return; const t0 = ctx.currentTime + (o.delay||0), dur = o.dur||0.4;
+      const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = o.filter||'lowpass';
+      f.frequency.setValueAtTime(o.f||800, t0);
+      if(o.f2) f.frequency.exponentialRampToValueAtTime(Math.max(40, o.f2), t0 + dur);
+      if(o.q != null) f.Q.value = o.q;
+      const g = ctx.createGain(); env(g, t0, o.a||0.006, dur, o.gain||0.3);
+      src.connect(f); f.connect(g); g.connect(master); src.start(t0); src.stop(t0 + dur + 0.05);
+    }
+    function boom(size){
+      const s = Math.max(0.45, Math.min(2.3, size/90));
+      noise({ filter:'lowpass', f:900*s, f2:55, dur:0.5*s, gain:0.5 });
+      tone({ type:'sine', f:130*s, f2:34, dur:0.55*s, gain:0.45 });
+    }
+    return {
+      on,
+      fire(weapon){ on(); if(!ctx) return;
+        if(weapon==='rail'){ tone({type:'sawtooth', f:1500, f2:180, dur:0.28, gain:0.22}); noise({filter:'highpass', f:2200, dur:0.16, gain:0.12}); }
+        else if(weapon==='nuke'){ tone({type:'square', f:190, f2:48, dur:0.34, gain:0.3}); noise({filter:'lowpass', f:520, f2:120, dur:0.4, gain:0.3}); }
+        else if(weapon==='strike'){ tone({type:'triangle', f:760, f2:220, dur:0.22, gain:0.2}); tone({type:'sine', f:1100, f2:1700, dur:0.5, gain:0.12, delay:0.05}); }
+        else { noise({filter:'bandpass', f:720, f2:300, dur:0.18, gain:0.26, q:1}); tone({type:'triangle', f:330, f2:120, dur:0.16, gain:0.2}); }
+      },
+      explosion(size, kind, small){ on(); if(!ctx) return;
+        if(small){ noise({filter:'lowpass', f:760, f2:80, dur:0.22, gain:0.26}); tone({type:'sine', f:110, f2:40, dur:0.22, gain:0.2}); return; }
+        boom(size);
+        if(kind==='napalm'){ noise({filter:'highpass', f:1400, dur:0.7, gain:0.16}); }       // sizzle
+        if(size>150){ tone({type:'sine', f:58, f2:30, dur:1.4, gain:0.32}); }                 // deep nuke rumble
+      },
+      bounce(){ on(); if(!ctx) return; tone({type:'square', f:560, f2:880, dur:0.08, gain:0.13}); },
+      bombTick(n){ on(); if(!ctx) return; tone({type:'square', f:380 + (10-n)*55, dur:0.1, gain:0.18}); },   // beeps higher as it nears 0
+      fanfare(){ on(); if(!ctx) return; [[523,0],[659,0.12],[784,0.24],[1047,0.4],[1047,0.56]].forEach(([f,d])=>{ tone({type:'square', f, dur:0.26, gain:0.2, delay:d}); tone({type:'triangle', f:f/2, dur:0.26, gain:0.12, delay:d}); }); },
+      event(name){ on(); if(!ctx) return;
+        if(name==='meteor'){ noise({filter:'highpass', f:300, f2:1600, dur:0.7, gain:0.2}); for(let i=0;i<3;i++) setTimeout(()=>boom(72), 180 + i*200); }
+        else if(name==='quake'){ noise({filter:'lowpass', f:120, f2:60, dur:1.5, gain:0.5}); tone({type:'sine', f:46, f2:30, dur:1.5, gain:0.42}); }
+        else if(name==='volcano'){ tone({type:'sine', f:70, f2:38, dur:1.3, gain:0.42}); noise({filter:'bandpass', f:600, dur:1.1, gain:0.2, q:0.7}); }
+        else if(name==='sinkhole'){ tone({type:'sine', f:520, f2:55, dur:1.1, gain:0.3}); noise({filter:'lowpass', f:400, f2:90, dur:0.9, gain:0.16}); }
+        else if(name==='gust'){ noise({filter:'bandpass', f:480, f2:1700, dur:1.2, gain:0.22, q:0.6}); }
+        else if(name==='aurora'){ [523,659,784,1047].forEach((f,i)=>tone({type:'sine', f, dur:0.9, gain:0.12, delay:i*0.13})); }
+      },
+    };
+  })();
+  // Unlock audio on the first interaction with the TV (browsers gate sound behind a gesture).
+  ['pointerdown','keydown','touchstart','click'].forEach(ev => window.addEventListener(ev, () => SFX.on(), { once:false }));
+
+  // ----- Weapon catalog (shared shape with the phone) -----
+  // Blast radii are 40% larger than the original tuning.
+  const WEAPONS = [
+    { id:'single', name:'Single Shot', desc:'Reliable round. Small crater.',           ammo:null, crater:67,  dmg:34, kind:'normal' },
+    { id:'big',    name:'Big Shot',    desc:'Heavier shell, wider blast.',             ammo:3,    crater:115, dmg:52, kind:'normal' },
+    { id:'cluster',name:'Cluster',     desc:'Splits into bomblets on impact.',         ammo:2,    crater:48,  dmg:18, kind:'cluster' },
+    { id:'roller', name:'Roller',      desc:'Rolls downhill, then detonates.',         ammo:2,    crater:81,  dmg:40, kind:'roller' },
+    { id:'digger', name:'Digger',      desc:'Drills a deep shaft. Drops tanks in.',    ammo:2,    crater:62,  dmg:30, kind:'digger' },
+    { id:'nuke',   name:'Nuke',        desc:'Massive blast. One per tank.',            ammo:1,    crater:210, dmg:92, kind:'normal' },
+    // ----- new weapons -----
+    { id:'mirv',   name:'MIRV',        desc:'Splits into 4 warheads at the peak.',     ammo:2,    crater:84,  dmg:40, kind:'mirv' },
+    { id:'bouncer',name:'Bouncer',     desc:'Skips along the ground, then blows.',     ammo:2,    crater:100, dmg:46, kind:'bounce' },
+    { id:'napalm', name:'Napalm',      desc:'Carpets a wide strip in fire.',           ammo:2,    crater:70,  dmg:30, kind:'napalm' },
+    { id:'strike', name:'Air Strike',  desc:'Calls in 5 bombs raining from the sky.',  ammo:1,    crater:90,  dmg:38, kind:'airstrike' },
+    { id:'rail',   name:'Railgun',     desc:'Flat, fast shot. Big direct hit.',        ammo:2,    crater:56,  dmg:74, kind:'rail' },
+  ];
+  const WEAPON_META = WEAPONS.map(w => ({ id:w.id, name:w.name, desc:w.desc }));
+  // Internal sub-munitions (not selectable by players).
+  const SPECIAL = {
+    '_bomblet':  { crater:48, dmg:18, kind:'normal' },
+    '_mirvhead': { crater:78, dmg:30, kind:'normal' },
+    '_skybomb':  { crater:82, dmg:30, kind:'normal' },
+  };
+  const wDef = (id) => SPECIAL[id] || WEAPONS.find(w => w.id === id);
+
+  // ----- Physics constants (ballistics tuned & verified — leave as-is) -----
+  const GRAV = 0.30, SPEEDK = 0.205, WINDK = 0.06, MICRO = 8;
+  const TIMESCALE = 0.25;    // projectiles fly in slow-motion (75% slower) for drama; same trajectory & range
+  const TURN_SECONDS = 50;
+  const MAX_HP = 110;        // tanks start at 110 (10% more)
+  // ----- Tank dimensions (smaller tanks) -----
+  const TANK_R = 16;          // hit radius
+  const PIVOT  = 12;          // turret pivot height above the ground contact point
+  const BARREL = 30;          // barrel length
+  // ----- Movement (limited drive per turn) -----
+  const MOVE_MAX  = 190;      // px of drive a tank gets each turn
+  const MOVE_STEP = 6;        // px consumed per move tick
+  const MAX_CLIMB = 12;       // max uphill rise per step before a slope blocks the tank
+
+  // ----- Roster (lobby) -----
+  const roster = new Map(); // id -> {id,name,color,connected}
+
+  // ----- Game state -----
+  let G = null;
+  let phase = 'lobby';     // lobby | playing | over
+  let busy = false;        // a shot is resolving
+  let resolveAt = 0;
+  let turnEndsAt = 0;
+  let lastBroadcast = 0;
+  let shake = 0;           // camera-shake magnitude (decays)
+  let pendingGust = null;  // a wind-gust event queues the next turn's wind
+
+  // ============ TERRAIN ============
+  let terrain = new Float32Array(W);
+  let stars = [];
+  function genTerrain(){
+    const base = H*0.60;
+    // stacked sine octaves for big rolling shape + fine detail
+    const layers = 5, oct = [];
+    for(let i=0;i<layers;i++){
+      oct.push({
+        amp: (140/(i+1)) * (0.55 + Math.random()*0.9),
+        f:   (0.0010 * Math.pow(1.95, i)) * (0.8 + Math.random()*0.5),
+        p:   Math.random()*Math.PI*2,
+      });
+    }
+    const ridgeP = Math.random()*Math.PI*2, ridgeF = 0.0009 + Math.random()*0.0006;
+    for(let x=0;x<W;x++){
+      let y = base;
+      for(const o of oct) y += Math.sin(x*o.f + o.p) * o.amp;
+      // ridged term carves the occasional sharp peak / mesa edge
+      y -= Math.abs(Math.sin(x*ridgeF + ridgeP)) * 60;
+      terrain[x] = Math.max(H*0.20, Math.min(H-50, y));
+    }
+    // soften so slopes are drivable, not pixel-jagged
+    for(let pass=0; pass<3; pass++){
+      for(let x=1;x<W-1;x++) terrain[x] = (terrain[x-1] + terrain[x]*2 + terrain[x+1]) / 4;
+    }
+  }
+  function makeStars(){
+    stars = [];
+    const n = 150;
+    for(let i=0;i<n;i++){
+      stars.push({ x:Math.random()*W, y:Math.random()*H*0.55, r:Math.random()*1.8+0.4, tw:Math.random()*Math.PI*2 });
+    }
+  }
+  function groundAt(x){ const i = Math.max(0, Math.min(W-1, Math.round(x))); return terrain[i]; }
+
+  function carveCrater(ex, ey, r){
+    const x0 = Math.max(0, Math.floor(ex-r)), x1 = Math.min(W-1, Math.ceil(ex+r));
+    for(let x=x0;x<=x1;x++){
+      const dx = x-ex, inside = r*r - dx*dx;
+      if(inside <= 0) continue;
+      const bottom = ey + Math.sqrt(inside);     // lower arc of the blast circle
+      if(bottom > terrain[x]) terrain[x] = Math.min(H-2, bottom);
+    }
+  }
+  function digShaft(ex){
+    const half = 18, depth = 280;
+    const x0 = Math.max(0, Math.floor(ex-half)), x1 = Math.min(W-1, Math.ceil(ex+half));
+    for(let x=x0;x<=x1;x++) terrain[x] = Math.min(H-2, terrain[x] + depth);
+  }
+
+  // ============ TANKS / MATCH ============
+  function newMatch(){
+    genTerrain();
+    const players = [...roster.values()].filter(p => p.connected);
+    const n = players.length;
+    const margin = 180, span = W - margin*2;
+    const tanks = players.map((p, i) => {
+      const x = n === 1 ? W/2 : margin + (span * i)/(n-1);
+      return {
+        id:p.id, name:p.name, color:p.color,
+        x, y:groundAt(x), hp:MAX_HP, alive:true, connected:true,
+        angle:45, power:60, weapon:'single', moveLeft:MOVE_MAX,
+        ammo: Object.fromEntries(WEAPONS.map(w => [w.id, w.ammo])),
+        flash:0, recoil:0,
+      };
+    });
+    G = { tanks, order: tanks.map(t=>t.id), turnPtr:-1, wind:0, winner:null, projectiles:[], particles:[], aimPreview:[], floatBomb:null };
+    // Some stages spawn a floating doomsday bomb that counts down 5–10 turns.
+    if(tanks.length >= 2 && Math.random() < 0.5){
+      G.floatBomb = { x:W/2 + (Math.random()-0.5)*260, baseY:H*0.40, y:H*0.40, vx:0, bob:Math.random()*6, countdown:5 + Math.floor(Math.random()*6), r:30 };
+    }
+    phase = 'playing'; busy = false;
+    hideOverlay('lobby');
+    hideOverlay('over');
+    nextTurn();
+    if(G.floatBomb){ banner('💣  LIVE BOMB — ' + G.floatBomb.countdown + ' TURNS!', '#ff5c49'); }
+  }
+
+  function activeTank(){ return G ? G.tanks.find(t => t.id === G.order[G.turnPtr]) : null; }
+  function aliveTanks(){ return G.tanks.filter(t => t.alive); }
+
+  function nextTurn(){
+    busy = false; G.projectiles.length = 0;
+    G.wind = +( (Math.random()*2 - 1) * (0.5 + Math.random()*0.6) ).toFixed(2);
+    if(pendingGust !== null){ G.wind = pendingGust; pendingGust = null; }  // wind-gust event
+    // advance to next alive + connected tank
+    for(let i=0;i<G.tanks.length;i++){
+      G.turnPtr = (G.turnPtr + 1) % G.tanks.length;
+      const t = G.tanks[G.turnPtr];
+      if(t.alive && t.connected){ break; }
+    }
+    const t = activeTank();
+    if(t){
+      t.moveLeft = MOVE_MAX;                                  // refuel the drive each turn
+      if(!t.ammo[t.weapon] && t.ammo[t.weapon] !== null) t.weapon = firstWeaponWithAmmo(t) || 'single';
+    }
+    turnEndsAt = performance.now() + TURN_SECONDS*1000;
+    updatePreview();
+    broadcast(true);
+  }
+
+  function firstWeaponWithAmmo(t){
+    const w = WEAPONS.find(w => t.ammo[w.id] === null || t.ammo[w.id] > 0);
+    return w ? w.id : null;
+  }
+
+  function checkWin(){
+    const alive = aliveTanks();
+    if(alive.length <= 1){
+      phase = 'over';
+      G.winner = alive[0] ? { id:alive[0].id, name:alive[0].name, color:alive[0].color } : null;
+      showWinner();
+      SFX.fanfare();
+      broadcast(true);
+      return true;
+    }
+    return false;
+  }
+
+  // ============ ENVIRONMENT EVENTS (something fun between turns) ============
+  function banner(text, color){ G.banner = { text, color, t: performance.now() }; }
+
+  function evMeteor(){
+    banner('☄  METEOR SHOWER', '#ff7b54'); SFX.event('meteor');
+    const n = 3 + Math.floor(Math.random()*3);
+    for(let i=0;i<n;i++){
+      const x = 90 + Math.random()*(W-180), gy = groundAt(x), r = 42 + Math.random()*30;
+      carveCrater(x, gy, r); applyBlastDamage(x, gy-PIVOT, r+8, 22); spawnExplosion(x, gy, r);
+    }
+    shake = Math.max(shake, 18); settleTanks();
+  }
+  function evQuake(){
+    banner('🌐  EARTHQUAKE', '#a855f7'); SFX.event('quake');
+    for(let x=0;x<W;x++) terrain[x] += Math.sin(x*0.05 + Math.random())*Math.random()*7;
+    for(let pass=0;pass<2;pass++) for(let x=1;x<W-1;x++) terrain[x] = (terrain[x-1]+terrain[x]*2+terrain[x+1])/4;
+    shake = Math.max(shake, 26); settleTanks();
+  }
+  function evVolcano(){
+    banner('🌋  VOLCANO', '#ff5c49'); SFX.event('volcano');
+    const cx = 140 + Math.random()*(W-280), span = 140;
+    for(let x=Math.floor(cx-span); x<=Math.ceil(cx+span); x++){
+      if(x<0||x>=W) continue;
+      const d = 1 - Math.abs(x-cx)/span; if(d>0) terrain[x] -= d*d*130;   // push ground up into a cone
+    }
+    for(let i=0;i<46;i++) G.particles.push({ kind:'spark', x:cx+(Math.random()-0.5)*46, y:groundAt(Math.max(0,Math.min(W-1,cx))), vx:(Math.random()-0.5)*4, vy:-4-Math.random()*7, life:1, col:Math.random()<0.5?'#ff7b3a':'#ffd166' });
+    shake = Math.max(shake, 16); settleTanks();
+  }
+  function evSinkhole(){
+    banner('🕳  SINKHOLE', '#22d3ee'); SFX.event('sinkhole');
+    const cx = 140 + Math.random()*(W-280);
+    carveCrater(cx, groundAt(cx)+70, 95);   // open a pit; tanks above may drop in
+    shake = Math.max(shake, 10); settleTanks();
+  }
+  function evGust(){
+    banner('🌪  WIND GUST', '#34d399'); SFX.event('gust');
+    pendingGust = (Math.random()<0.5?-1:1) * (1.6 + Math.random()*0.9);
+    for(let i=0;i<70;i++) G.particles.push({ kind:'smoke', x:Math.random()*W, y:Math.random()*H*0.7, vx:(pendingGust)*3, vy:(Math.random()-0.5), life:0.7, r:2+Math.random()*3 });
+  }
+  function evAurora(){
+    banner('✨  AURORA', '#22d3ee'); SFX.event('aurora');   // calm, cosmetic breather
+    for(let i=0;i<60;i++) G.particles.push({ kind:'spark', x:Math.random()*W, y:Math.random()*H*0.5, vx:(Math.random()-0.5)*0.6, vy:-0.2-Math.random()*0.5, life:1.2, col:Math.random()<0.5?'#22d3ee':'#a855f7' });
+  }
+  const ENV_EVENTS = [evMeteor, evQuake, evVolcano, evSinkhole, evGust, evAurora];
+  function runEnvEvent(){ ENV_EVENTS[Math.floor(Math.random()*ENV_EVENTS.length)](); }
+
+  // ----- Floating countdown bomb -----
+  function tickBomb(){
+    const fb = G.floatBomb; if(!fb) return;
+    fb.countdown--;
+    if(fb.countdown <= 0){ detonateBomb(); }
+    else { SFX.bombTick(fb.countdown); if(fb.countdown <= 3) banner('💣  BOMB IN ' + fb.countdown + '!', '#ff5c49'); }
+  }
+  function detonateBomb(){
+    const fb = G.floatBomb; if(!fb) return;
+    G.floatBomb = null;
+    const R = 190;                                   // big airburst
+    carveCrater(fb.x, Math.min(H-2, fb.y + 40), 150);
+    applyBlastDamage(fb.x, fb.y, R, 95);
+    spawnExplosion(fb.x, fb.y, 170);
+    SFX.explosion(190, 'normal');
+    banner('💥  BOMB!', '#ffd166');
+    shake = Math.min(34, Math.max(shake, 28));
+    settleTanks();
+  }
+
+  // ============ INPUT (from phones via relay) ============
+  function roomLeaderId(){ const c=[...roster.values()].filter(p=>p.connected).sort((a,b)=>a.id-b.id); return c[0]?c[0].id:null; }
+  function applyInput(id, type, payload){
+    if(type === 'selectGame'){ if(id===roomLeaderId()){ const g=payload&&payload.game; location.href = g==='frogger'?'/frogger?room='+ROOM : g==='cannons'?'/couch?room='+ROOM : '/?room='+ROOM; } return; }
+    if(type === 'start'){ if(phase === 'lobby') newMatch(); return; }
+    if(type === 'rematch'){ if(phase === 'over') newMatch(); return; }
+    if(phase !== 'playing' || busy) return;
+    const t = activeTank();
+    if(!t || t.id !== id) return; // only the active player drives
+
+    if(type === 'aim'){
+      t.angle = Math.max(0, Math.min(180, payload.angle));
+      t.power = Math.max(1, Math.min(150, payload.power));
+      updatePreview();
+      broadcast();
+    } else if(type === 'move'){
+      driveTank(t, payload.dir < 0 ? -1 : 1);
+    } else if(type === 'weapon'){
+      const a = t.ammo[payload.weaponId];
+      if(a === null || a > 0){ t.weapon = payload.weaponId; updatePreview(); broadcast(); }
+    } else if(type === 'fire'){
+      fire(t);
+    }
+  }
+
+  // Drive the active tank a small step; respects fuel, map edges and steep slopes.
+  function driveTank(t, dir){
+    if(t.moveLeft <= 0) return;
+    const nx = t.x + dir*MOVE_STEP;
+    if(nx < 60 || nx > W-60) return;            // stay on the map
+    const cy = groundAt(t.x), ny = groundAt(nx);
+    if(cy - ny > MAX_CLIMB) return;             // too steep to climb (uphill = higher ground/smaller y)
+    t.x = nx; t.y = ny;
+    t.moveLeft = Math.max(0, t.moveLeft - MOVE_STEP);
+    // little dust puff from the treads
+    if(Math.random() < 0.5) G.particles.push({ kind:'spark', x:t.x - dir*14, y:t.y-3, vx:-dir*(0.5+Math.random()), vy:-Math.random()*1.2, life:0.5, col:'rgba(180,170,210,0.9)' });
+    updatePreview();
+    broadcast();
+  }
+
+  function muzzle(t){
+    const rad = t.angle*Math.PI/180;
+    const cx = t.x, cy = t.y - PIVOT;
+    return { x: cx + Math.cos(rad)*BARREL, y: cy - Math.sin(rad)*BARREL, rad };
+  }
+
+  function fire(t){
+    const def = wDef(t.weapon);
+    if(!def) return;
+    const a = t.ammo[t.weapon];
+    if(a !== null){ if(a <= 0) return; t.ammo[t.weapon] = a - 1; }
+    const m = muzzle(t);
+    const speed = t.power * SPEEDK * (def.kind === 'rail' ? 1.7 : 1);
+    G.projectiles.push({
+      x:m.x, y:m.y, vx:Math.cos(m.rad)*speed, vy:-Math.sin(m.rad)*speed,
+      weapon:t.weapon, owner:t.id, trail:[], mode:'fly', rollBudget:150, bomblet:false,
+      gravK: def.kind === 'rail' ? 0.12 : 1,        // railgun barely arcs
+      bounces: def.kind === 'bounce' ? 3 : 0,       // bouncer skips a few times
+      split: false,                                 // mirv split-once guard
+    });
+    t.flash = 1; t.recoil = 1;
+    SFX.fire(t.weapon);
+    // muzzle flash particles
+    for(let i=0;i<10;i++){
+      const a2 = m.rad + (Math.random()-0.5)*0.5, sp = 2+Math.random()*4;
+      G.particles.push({ kind:'spark', x:m.x, y:m.y, vx:Math.cos(a2)*sp, vy:-Math.sin(a2)*sp, life:0.5, col:'#ffe08a' });
+    }
+    busy = true;
+    G.aimPreview = [];
+    broadcast(true);
+  }
+
+  // ============ SIMULATION ============
+  function stepProjectiles(){
+    const live = [];
+    for(const p of G.projectiles){
+      const def = wDef(p.weapon);
+      if(p.mode === 'roll'){
+        // creep downhill, then detonate
+        const dir = groundAt(p.x-6) < groundAt(p.x+6) ? 1 : -1; // toward lower ground
+        p.x += dir*3*TIMESCALE; p.y = groundAt(p.x) - 4; p.rollBudget -= 3*TIMESCALE;
+        let hitTank = directTankHit(p.x, p.y);
+        if(p.rollBudget <= 0 || hitTank || p.x<8 || p.x>W-8){ explode(p.x, p.y, def, p.owner, false); continue; }
+        p.trail.push({x:p.x,y:p.y}); if(p.trail.length>14) p.trail.shift();
+        live.push(p); continue;
+      }
+      // flying (integrated in slow-motion time-steps)
+      p.vy += GRAV * (p.gravK == null ? 1 : p.gravK) * TIMESCALE; p.vx += G.wind*WINDK*TIMESCALE;
+      let detonated = false, survived = false;
+      for(let s=0;s<MICRO;s++){
+        p.x += (p.vx/MICRO)*TIMESCALE; p.y += (p.vy/MICRO)*TIMESCALE;
+        if(p.x < -40 || p.x > W+40){ detonated = true; break; }          // off-screen dud
+        if(G.floatBomb){ const fb=G.floatBomb, dx=p.x-fb.x, dy=p.y-fb.y;
+          if(dx*dx + dy*dy < (fb.r+5)*(fb.r+5)){                          // hit the bomb: shove it & detonate the shell
+            fb.vx += (p.vx>=0?1:-1) * Math.min(17, Math.abs(p.vx)+5);
+            explode(p.x, p.y, def, p.owner, p.bomblet); detonated = true; break;
+          } }
+        if(p.y > H){ explode(Math.max(8,Math.min(W-8,p.x)), H-6, def, p.owner, p.bomblet); detonated = true; break; }
+        const th = directTankHit(p.x, p.y);
+        if(th){ if(handleImpact(p, def, p.x, p.y, false)) survived = true; else detonated = true; break; }
+        if(p.y >= groundAt(p.x)){ if(handleImpact(p, def, p.x, groundAt(p.x), true)) survived = true; else detonated = true; break; }
+      }
+      if(survived){ p.trail.push({x:p.x,y:p.y}); if(p.trail.length>34) p.trail.shift(); live.push(p); continue; }
+      if(!detonated){
+        // MIRV splits into 4 warheads as it tips over the top of its arc
+        if(def.kind === 'mirv' && !p.split && p.vy > 0.5){
+          p.split = true;
+          for(let i=0;i<4;i++){
+            G.projectiles.push({
+              x:p.x, y:p.y, vx:(i-1.5)*2.2 + p.vx*0.35, vy:1 + Math.random()*1.2,
+              weapon:'_mirvhead', owner:p.owner, trail:[], mode:'fly', bomblet:true,
+              rollBudget:0, gravK:1, bounces:0, split:true,
+            });
+          }
+          continue;   // drop the spent shell
+        }
+        p.trail.push({x:p.x,y:p.y}); if(p.trail.length>34) p.trail.shift();
+        // faint smoke puff along the flight path
+        if(Math.random()<0.6) G.particles.push({ kind:'smoke', x:p.x, y:p.y, vx:(Math.random()-0.5)*0.4, vy:-0.3-Math.random()*0.3, life:0.7, r:3+Math.random()*3 });
+        live.push(p);
+      }
+    }
+    G.projectiles = live;
+  }
+
+  // Returns true if the projectile keeps living (rolling / bouncing), false if it detonated.
+  function handleImpact(p, def, hx, hy, snapGround){
+    if(snapGround){
+      if(def.kind === 'roller' && !p.bomblet){
+        p.mode = 'roll'; p.y = groundAt(p.x) - 4; return true;   // start rolling instead of exploding
+      }
+      if(def.kind === 'bounce' && !p.bomblet && p.bounces > 0){
+        p.bounces--;
+        p.y = groundAt(p.x) - 6;
+        p.vy = -Math.abs(p.vy)*0.55 - 1.5;   // kick back up
+        p.vx *= 0.82;
+        SFX.bounce();
+        for(let i=0;i<6;i++){ const a=Math.random()*Math.PI*2; G.particles.push({ kind:'spark', x:p.x, y:p.y, vx:Math.cos(a)*2, vy:-Math.random()*3, life:0.4, col:'#cbd5e1' }); }
+        return true;
+      }
+      hy = groundAt(hx) - 2;
+    }
+    explode(hx, hy, def, p.owner, p.bomblet);
+    return false;
+  }
+
+  function directTankHit(x, y){
+    for(const t of G.tanks){
+      if(!t.alive) continue;
+      const cx = t.x, cy = t.y - PIVOT;
+      if((x-cx)*(x-cx) + (y-cy)*(y-cy) < (TANK_R*1.0)*(TANK_R*1.0)) return t;
+    }
+    return null;
+  }
+
+  function applyBlastDamage(ex, ey, R, maxD){
+    for(const t of G.tanks){
+      if(!t.alive) continue;
+      const d = Math.hypot(t.x - ex, (t.y-PIVOT) - ey);
+      if(d < R){
+        const dmg = maxD * (1 - d/R);
+        t.hp = Math.max(0, t.hp - dmg);
+        t.flash = 1;
+        if(t.hp <= 0){ t.alive = false; bigParticles(t.x, t.y-PIVOT, t.color); }
+      }
+    }
+  }
+
+  function explode(ex, ey, def, owner, isBomblet){
+    // Napalm: lay a carpet of fire across a wide strip instead of one crater.
+    if(def.kind === 'napalm' && !isBomblet){
+      for(let k=-2;k<=2;k++){
+        const cx = Math.max(8, Math.min(W-8, ex + k*55 + (Math.random()-0.5)*18));
+        const gy = groundAt(cx);
+        carveCrater(cx, gy, 46);
+        applyBlastDamage(cx, gy-PIVOT, 58, 22);
+        spawnExplosion(cx, gy, 42);
+      }
+      for(let i=0;i<48;i++){
+        const cx = ex + (Math.random()-0.5)*300;
+        G.particles.push({ kind:'spark', x:cx, y:groundAt(Math.max(0,Math.min(W-1,cx)))-Math.random()*22, vx:(Math.random()-0.5)*2, vy:-Math.random()*3, life:0.8+Math.random()*0.7, col:Math.random()<0.5?'#ff7b3a':'#ffd166' });
+      }
+      shake = Math.min(22, Math.max(shake, 12));
+      SFX.explosion(120, 'napalm');
+      settleTanks();
+      return;
+    }
+
+    if(def.kind === 'digger' && !isBomblet){ digShaft(ex); }
+    else { carveCrater(ex, ey, def.crater); }
+
+    applyBlastDamage(ex, ey, def.crater + 10, def.dmg);
+
+    // visuals + camera shake scaled to blast size
+    spawnExplosion(ex, ey, def.crater);
+    SFX.explosion(def.crater, def.kind, isBomblet);
+    shake = Math.min(28, Math.max(shake, def.crater*0.16));
+
+    // cluster split
+    if(def.kind === 'cluster' && !isBomblet){
+      for(let i=0;i<5;i++){
+        const ang = (-Math.PI/2) + (i-2)*0.32 + (Math.random()-0.5)*0.15;
+        const sp = 5 + Math.random()*3;
+        G.projectiles.push({
+          x:ex, y:ey-6, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp - 4,
+          weapon:'_bomblet', trail:[], mode:'fly', owner, bomblet:true, rollBudget:0,
+        });
+      }
+    }
+    // air strike: rain bombs from the sky around the impact
+    if(def.kind === 'airstrike' && !isBomblet){
+      for(let i=0;i<5;i++){
+        const tx = Math.max(20, Math.min(W-20, ex + (i-2)*75 + (Math.random()-0.5)*30));
+        G.projectiles.push({
+          x:tx, y:-20, vx:(Math.random()-0.5)*0.6, vy:6 + Math.random()*2,
+          weapon:'_skybomb', owner, trail:[], mode:'fly', bomblet:true, rollBudget:0, gravK:1, bounces:0, split:true,
+        });
+      }
+    }
+    settleTanks();
+  }
+
+  function settleTanks(){
+    for(const t of G.tanks){
+      if(!t.alive) continue;
+      const g = groundAt(t.x);
+      if(g > t.y + 2){ // ground fell away beneath the tank
+        const drop = g - t.y;
+        t.y = g;
+        if(drop > 130){ t.hp = Math.max(0, t.hp - Math.min(35, drop*0.08)); if(t.hp<=0){t.alive=false; bigParticles(t.x,t.y-PIVOT,t.color);} }
+      } else { t.y = g; }
+    }
+  }
+
+  // ============ PARTICLES / EXPLOSION VISUALS ============
+  function spawnExplosion(x, y, r){
+    G.particles.push({ kind:'flash', x, y, r, t:0, max:r*1.7 });
+    G.particles.push({ kind:'ring', x, y, t:0, max:r*2.4 });
+    const count = Math.round(r*0.8);
+    for(let i=0;i<count;i++){
+      const a = Math.random()*Math.PI*2, sp = 2 + Math.random()*8;
+      G.particles.push({ kind:'spark', x, y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp - 2, life:1, col: Math.random()<.5?'#ffd166':'#ff7b54' });
+    }
+    for(let i=0;i<Math.round(r*0.3);i++){
+      const a = Math.random()*Math.PI*2, sp = 0.5 + Math.random()*2;
+      G.particles.push({ kind:'smoke', x, y, vx:Math.cos(a)*sp, vy:-1-Math.random()*2, life:1.1, r:5+Math.random()*10 });
+    }
+  }
+  function bigParticles(x,y,col){
+    for(let i=0;i<30;i++){
+      const a = Math.random()*Math.PI*2, sp = 3 + Math.random()*9;
+      G.particles.push({ kind:'spark', x, y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp - 3, life:1.3, col });
+    }
+  }
+  function stepParticles(){
+    const live = [];
+    for(const p of G.particles){
+      if(p.kind === 'flash'){ p.t += 1; if(p.t < 16) live.push(p); }
+      else if(p.kind === 'ring'){ p.t += 1; if(p.t < 18) live.push(p); }
+      else if(p.kind === 'smoke'){ p.x+=p.vx; p.y+=p.vy; p.vy*=0.97; p.r+=0.5; p.life-=0.02; if(p.life>0) live.push(p); }
+      else { p.x+=p.vx; p.y+=p.vy; p.vy+=0.25; p.life-=0.025; if(p.life>0 && p.y<H) live.push(p); }
+    }
+    G.particles = live;
+  }
+
+  // ============ AIM PREVIEW (predicted arc for the active tank) ============
+  function updatePreview(){
+    if(!G || phase!=='playing') { if(G) G.aimPreview=[]; return; }
+    const t = activeTank(); if(!t){ G.aimPreview=[]; return; }
+    const m = muzzle(t); const speed = t.power*SPEEDK;
+    let x=m.x, y=m.y, vx=Math.cos(m.rad)*speed, vy=-Math.sin(m.rad)*speed;
+    const pts=[];
+    for(let i=0;i<320;i++){
+      vy+=GRAV; vx+=G.wind*WINDK;
+      x+=vx; y+=vy;
+      if(x<0||x>W||y>H) break;
+      if(y>=groundAt(x)) break;
+      if(i%4===0) pts.push({x,y});
+    }
+    G.aimPreview = pts;
+  }
+
+  // ============ STATE BROADCAST ============
+  function broadcast(force){
+    const now = performance.now();
+    if(!force && now - lastBroadcast < 55) return; // throttle live aim
+    lastBroadcast = now;
+
+    if(phase === 'lobby'){
+      socket.emit('host:state', {
+        phase:'lobby', turnId:null, wind:0, winner:null, maxHp:MAX_HP,
+        players:[...roster.values()].map(p=>({id:p.id,name:p.name,color:p.color,hp:MAX_HP,alive:true,connected:p.connected})),
+        weapons:WEAPON_META, ammo:{}, aim:{angle:45,power:60,weaponId:'single'}, move:{left:MOVE_MAX,max:MOVE_MAX},
+      });
+      return;
+    }
+    const t = activeTank();
+    socket.emit('host:state', {
+      phase, turnId: (phase==='playing' && t && !busy) ? t.id : (t?t.id:null),
+      wind:G.wind, winner:G.winner, maxHp:MAX_HP,
+      players:G.tanks.map(t=>({id:t.id,name:t.name,color:t.color,hp:t.hp,alive:t.alive,connected:t.connected})),
+      weapons:WEAPON_META,
+      ammo:Object.fromEntries(G.tanks.map(t=>[t.id, t.ammo])),
+      aim: t ? {angle:t.angle,power:t.power,weaponId:t.weapon} : {angle:45,power:60,weaponId:'single'},
+      move: t ? {left:Math.round(t.moveLeft), max:MOVE_MAX} : {left:0,max:MOVE_MAX},
+    });
+  }
+
+  // ============ SOCKET WIRING ============
+  socket.on('connect', () => socket.emit('host:hello', { code: ROOM || null }));
+  socket.on('host:roster', (arr) => { roster.clear(); arr.forEach(p=>roster.set(p.id,{...p})); renderLobby(); broadcast(true); });
+  socket.on('host:playerJoined', (p) => { roster.set(p.id, {...p, connected:true}); renderLobby();
+    if(phase==='playing'){ /* joins next match */ } broadcast(true); });
+  socket.on('host:playerLeft', ({id}) => {
+    const r = roster.get(id); if(r) r.connected=false;
+    if(G){ const t=G.tanks.find(t=>t.id===id); if(t){ t.connected=false; } }
+    renderLobby();
+    // if it was their turn and we're mid-game, skip them shortly
+    if(phase==='playing' && !busy){ const t=activeTank(); if(t && t.id===id){ setTimeout(()=>{ if(phase==='playing'&&!busy) nextTurn(); }, 400); } }
+    broadcast(true);
+  });
+  socket.on('host:input', ({id,type,payload}) => applyInput(id,type,payload||{}));
+
+  // ============ LOBBY DOM ============
+  const $ = (id)=>document.getElementById(id);
+  function showOverlay(id){ $(id).classList.add('show'); }
+  function hideOverlay(id){ $(id).classList.remove('show'); }
+
+  // The server hands us the room code on host:hello; build the QR/join link with it.
+  socket.on('host:room', ({ code, joinUrl })=>{
+    document.querySelectorAll('.homelink').forEach(a=> a.setAttribute('href','/?room='+code));
+    $('roomCode').textContent = code;
+    const full = joinUrl + '?room=' + code;
+    $('joinUrl').textContent = full.replace(/^https?:\/\//,'');
+    $('qr').innerHTML=''; try{ new QRCode($('qr'), { text:full, width:128, height:128, correctLevel:QRCode.CorrectLevel.M }); }
+    catch(e){ $('qr').textContent='QR'; }
+  });
+
+  function renderLobby(){
+    const list = $('rlist');
+    const players = [...roster.values()];
+    if(players.length === 0){ list.innerHTML = '<div class="empty-hint">No one\'s joined yet…</div>'; }
+    else {
+      list.innerHTML = '';
+      players.forEach(p=>{
+        const el = document.createElement('div');
+        el.className = 'pill' + (p.connected?'':' off');
+        el.innerHTML = `<i style="background:${p.color};color:${p.color}"></i>${p.name}`;
+        list.appendChild(el);
+      });
+    }
+    const connected = players.filter(p=>p.connected);
+    $('startcue').textContent = connected.length >= 2
+      ? 'First player: tap START on your phone ⟶'
+      : (connected.length===1 ? 'Need one more player…' : '');
+    if(phase==='lobby'){ showOverlay('lobby'); }
+  }
+
+  function showWinner(){
+    if(G.winner){ $('winnerName').textContent = G.winner.name + ' wins!'; $('winnerName').style.color = G.winner.color; }
+    else { $('winnerName').textContent = 'Everyone\'s out!'; $('winnerName').style.color = '#fff'; }
+    showOverlay('over');
+  }
+
+  // ============ RENDER ============
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#150d2e'); g.addColorStop(0.38,'#3a1f5c'); g.addColorStop(0.66,'#7a2f6a'); g.addColorStop(0.86,'#c24c5a'); g.addColorStop(1,'#f08a45');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    // stars
+    const now = performance.now()/600;
+    for(const s of stars){
+      const a = 0.35 + 0.45*Math.abs(Math.sin(now + s.tw));
+      ctx.globalAlpha = a; ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // synth sun
+    const sx = W*0.5, sy = H*0.74;
+    const sun = ctx.createRadialGradient(sx,sy,10,sx,sy,520);
+    sun.addColorStop(0,'rgba(255,210,140,.65)'); sun.addColorStop(0.5,'rgba(255,120,150,.18)'); sun.addColorStop(1,'rgba(255,120,150,0)');
+    ctx.fillStyle=sun; ctx.fillRect(0,0,W,H);
+    const sd = ctx.createLinearGradient(0,sy-160,0,sy+160);
+    sd.addColorStop(0,'#ffd27a'); sd.addColorStop(1,'#ff5e7e');
+    ctx.fillStyle=sd;
+    ctx.beginPath(); ctx.arc(sx,sy,150,0,Math.PI*2); ctx.fill();
+    // sun scanlines
+    ctx.fillStyle='rgba(21,13,46,0.65)';
+    for(let i=0;i<7;i++){ const yy = sy + 36 + i*16; ctx.fillRect(sx-150, yy, 300, 9 - i); }
+    // distant parallax ridges
+    drawRidge(H*0.66, '#3a2150', 0.00075, 70, 0.6);
+    drawRidge(H*0.72, '#2a1840', 0.00120, 50, 1.4);
+  }
+  function drawRidge(baseY, col, f, amp, phase){
+    ctx.beginPath(); ctx.moveTo(0,H);
+    for(let x=0;x<=W;x+=8){ const y = baseY + Math.sin(x*f+phase)*amp + Math.sin(x*f*2.7+phase)*amp*0.3; ctx.lineTo(x,y); }
+    ctx.lineTo(W,H); ctx.closePath();
+    ctx.fillStyle=col; ctx.fill();
+  }
+  function drawTerrain(){
+    // body fill
+    ctx.beginPath(); ctx.moveTo(-10,H+10);
+    for(let x=0;x<W;x+=2) ctx.lineTo(x, terrain[x]);
+    ctx.lineTo(W+10, terrain[W-1]); ctx.lineTo(W+10,H+10); ctx.closePath();
+    const g = ctx.createLinearGradient(0,H*0.35,0,H);
+    g.addColorStop(0,'#241a3e'); g.addColorStop(0.5,'#1a1330'); g.addColorStop(1,'#0d0a1c');
+    ctx.fillStyle=g; ctx.fill();
+    // strata shimmer just under the surface
+    ctx.save(); ctx.clip();
+    ctx.strokeStyle='rgba(120,80,170,0.10)'; ctx.lineWidth=2;
+    for(let band=18; band<140; band+=26){
+      ctx.beginPath();
+      for(let x=0;x<=W;x+=6){ const y=terrain[Math.min(W-1,x)]+band; x?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+      ctx.stroke();
+    }
+    ctx.restore();
+    // neon rim (cyan→magenta gradient) with glow
+    const rim = ctx.createLinearGradient(0,0,W,0);
+    rim.addColorStop(0,'#22d3ee'); rim.addColorStop(0.5,'#a855f7'); rim.addColorStop(1,'#ff5c8a');
+    ctx.save();
+    ctx.shadowColor='rgba(168,85,247,0.9)'; ctx.shadowBlur=18;
+    ctx.beginPath(); ctx.moveTo(0,terrain[0]);
+    for(let x=0;x<W;x+=2) ctx.lineTo(x,terrain[x]);
+    ctx.strokeStyle=rim; ctx.lineWidth=3.5; ctx.stroke();
+    ctx.restore();
+  }
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+  }
+  function drawTank(t, isActive){
+    const x=t.x, y=t.y;
+    ctx.save(); ctx.translate(x,y);
+    if(!t.alive){
+      ctx.globalAlpha=0.55; ctx.fillStyle='#2a2630';
+      roundRect(-15,-9,30,9,4); ctx.fill();
+      ctx.fillStyle='#46414f'; ctx.beginPath(); ctx.arc(0,-11,5,0,7); ctx.fill();
+      // smoldering wisp
+      ctx.globalAlpha=0.3; ctx.fillStyle='#7a7385';
+      ctx.beginPath(); ctx.arc(0,-20,6,0,7); ctx.fill();
+      ctx.globalAlpha=1; ctx.restore(); return;
+    }
+    const flash = t.flash>0;
+    const recoil = t.recoil>0 ? t.recoil : 0;
+    // active highlight ring
+    if(isActive){
+      ctx.save();
+      ctx.shadowColor=t.color; ctx.shadowBlur=20;
+      ctx.beginPath(); ctx.arc(0,-PIVOT, 30 + Math.sin(performance.now()/250)*3, 0, 7);
+      ctx.strokeStyle=t.color; ctx.globalAlpha=0.9; ctx.lineWidth=2.5; ctx.stroke();
+      ctx.restore();
+    }
+    // barrel (recoils slightly when firing)
+    const rad=t.angle*Math.PI/180;
+    const bx = -Math.cos(rad)*recoil*4, by = Math.sin(rad)*recoil*4;
+    ctx.save();
+    ctx.shadowColor=t.color; ctx.shadowBlur=isActive?10:0;
+    ctx.strokeStyle='#15121f'; ctx.lineWidth=7; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(bx,-PIVOT+by); ctx.lineTo(bx+Math.cos(rad)*BARREL,-PIVOT-Math.sin(rad)*BARREL+by); ctx.stroke();
+    ctx.strokeStyle=t.color; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(bx,-PIVOT+by); ctx.lineTo(bx+Math.cos(rad)*BARREL,-PIVOT-Math.sin(rad)*BARREL+by); ctx.stroke();
+    ctx.restore();
+    // body with neon outline
+    ctx.save();
+    ctx.shadowColor=t.color; ctx.shadowBlur=14;
+    ctx.fillStyle = flash ? '#fff' : t.color;
+    roundRect(-15,-13,30,13,5); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle='rgba(0,0,0,.28)'; roundRect(-15,-6,30,6,3); ctx.fill();
+    // turret dome
+    ctx.fillStyle = flash ? '#fff' : t.color; ctx.beginPath(); ctx.arc(0,-13,8,Math.PI,0); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.25)'; ctx.beginPath(); ctx.arc(-2,-15,2.4,0,7); ctx.fill();
+    // treads
+    ctx.fillStyle='#0f0d17'; roundRect(-17,-2,34,6,3); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.08)';
+    for(let i=-14;i<=12;i+=5){ ctx.fillRect(i,-1,2,4); }
+    // name + hp
+    ctx.font="800 16px Inter, sans-serif"; ctx.textAlign='center';
+    ctx.fillStyle='#fff'; ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=4;
+    ctx.fillText(t.name, 0, -46); ctx.shadowBlur=0;
+    const bw=44;
+    ctx.fillStyle='rgba(0,0,0,.5)'; roundRect(-bw/2,-40,bw,6,3); ctx.fill();
+    const hpRatio = Math.max(0, t.hp)/MAX_HP;
+    ctx.fillStyle = hpRatio>0.5?'#7bd88f':(hpRatio>0.25?'#fbbf24':'#ff5c49');
+    roundRect(-bw/2,-40,bw*hpRatio,6,3); ctx.fill();
+    ctx.restore();
+    if(t.flash>0) t.flash -= 0.12;
+    if(t.recoil>0) t.recoil -= 0.10;
+  }
+  function drawProjectiles(){
+    for(const p of G.projectiles){
+      // glowing trail
+      ctx.save();
+      ctx.lineCap='round';
+      for(let i=1;i<p.trail.length;i++){
+        const a = i/p.trail.length;
+        ctx.strokeStyle='rgba(255,210,140,'+(a*0.6)+')'; ctx.lineWidth=1+a*4;
+        ctx.beginPath(); ctx.moveTo(p.trail[i-1].x,p.trail[i-1].y); ctx.lineTo(p.trail[i].x,p.trail[i].y); ctx.stroke();
+      }
+      ctx.restore();
+      // hot core
+      ctx.save(); ctx.shadowColor='#ffd27a'; ctx.shadowBlur=16;
+      ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(p.x,p.y,p.bomblet?3.5:5.5,0,7); ctx.fill();
+      ctx.restore();
+    }
+  }
+  function drawPreview(){
+    if(!G.aimPreview.length) return;
+    ctx.save();
+    const t = activeTank();
+    for(let i=0;i<G.aimPreview.length;i++){
+      const pt=G.aimPreview[i];
+      ctx.globalAlpha = 0.55 * (1 - i/G.aimPreview.length);
+      ctx.fillStyle = t ? t.color : '#fff';
+      ctx.beginPath(); ctx.arc(pt.x,pt.y,2.6,0,7); ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawParticles(){
+    for(const p of G.particles){
+      if(p.kind==='flash'){
+        const r = p.max * (p.t/16);
+        const g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r);
+        g.addColorStop(0,'rgba(255,255,220,'+(1-p.t/16)+')');
+        g.addColorStop(0.4,'rgba(255,150,60,'+(0.8-p.t/20)+')');
+        g.addColorStop(1,'rgba(255,80,40,0)');
+        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.fill();
+      } else if(p.kind==='ring'){
+        const r = p.max * (p.t/18);
+        ctx.globalAlpha = Math.max(0, 0.7*(1-p.t/18));
+        ctx.strokeStyle='#ffe6a0'; ctx.lineWidth=3*(1-p.t/18)+0.5;
+        ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.stroke(); ctx.globalAlpha=1;
+      } else if(p.kind==='smoke'){
+        ctx.globalAlpha=Math.max(0,p.life*0.4);
+        ctx.fillStyle='#6b6478';
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); ctx.globalAlpha=1;
+      } else {
+        ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.col;
+        ctx.beginPath(); ctx.arc(p.x,p.y,2.6,0,7); ctx.fill(); ctx.globalAlpha=1;
+      }
+    }
+  }
+  function drawHUD(){
+    // wind gauge (top center)
+    ctx.textAlign='center'; ctx.font="800 22px Inter, sans-serif";
+    const dir = G.wind>0?'▶':'◀';
+    ctx.fillStyle='rgba(255,255,255,.92)';
+    ctx.fillText(`WIND ${Math.abs(G.wind)>0.05?dir:'•'} ${Math.abs(G.wind).toFixed(2)}`, W/2, 50);
+    // little wind arrow bar
+    const wlen = Math.abs(G.wind)*60;
+    ctx.strokeStyle='rgba(34,211,238,.8)'; ctx.lineWidth=4; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(W/2,66); ctx.lineTo(W/2 + (G.wind>0?wlen:-wlen),66); ctx.stroke();
+
+    const t = activeTank();
+    if(phase==='playing' && t){
+      const left = Math.max(0, Math.ceil((turnEndsAt-performance.now())/1000));
+      // turn name + timer (top left)
+      ctx.textAlign='left'; ctx.font="900 30px Anton, sans-serif";
+      ctx.fillStyle=t.color; ctx.shadowColor=t.color; ctx.shadowBlur=14;
+      ctx.fillText(`${t.name.toUpperCase()}'S TURN`, 40, 56); ctx.shadowBlur=0;
+      ctx.fillStyle='rgba(255,255,255,.88)'; ctx.font="800 24px Inter, sans-serif";
+      ctx.fillText(busy ? 'FIRING…' : `${left}s`, 40, 90);
+
+      if(!busy){
+        // weapon / angle / power (bottom left)
+        ctx.font="700 20px Inter, sans-serif"; ctx.fillStyle='rgba(255,255,255,.8)';
+        ctx.fillText(`${wDef(t.weapon).name}   ∠${t.angle}°   PWR ${t.power}`, 40, H-44);
+        // fuel bar (bottom left)
+        const fw=220, fx=40, fy=H-32;
+        ctx.fillStyle='rgba(255,255,255,.55)'; ctx.font="700 14px Inter, sans-serif";
+        ctx.fillText('FUEL', fx, fy-4);
+        ctx.fillStyle='rgba(255,255,255,.12)'; roundRect(fx+46,fy-15,fw,12,6); ctx.fill();
+        ctx.fillStyle=t.color; roundRect(fx+46,fy-15,fw*(t.moveLeft/MOVE_MAX),12,6); ctx.fill();
+      }
+    }
+  }
+
+  function updateBomb(){
+    const fb = G.floatBomb; if(!fb) return;
+    fb.x += fb.vx; fb.vx *= 0.95;
+    fb.x = Math.max(70, Math.min(W-70, fb.x));
+    fb.bob += 0.045; fb.y = fb.baseY + Math.sin(fb.bob)*12;
+  }
+  function drawBomb(){
+    const fb = G.floatBomb; if(!fb) return;
+    const t = performance.now(), urgency = Math.max(0, 1 - fb.countdown/10);
+    const pulse = 0.5 + 0.5*Math.sin(t/(130 - urgency*90));
+    ctx.save();
+    ctx.shadowColor = '#ff3b3b'; ctx.shadowBlur = 18 + pulse*24*(0.5+urgency);
+    ctx.fillStyle = '#1a1620'; ctx.beginPath(); ctx.arc(fb.x, fb.y, fb.r, 0, 7); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,'+Math.round(70-50*pulse)+',60,'+(0.6+0.4*pulse)+')'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(fb.x, fb.y, fb.r, 0, 7); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.arc(fb.x-8, fb.y-9, 5, 0, 7); ctx.fill();
+    // fuse + spark
+    ctx.strokeStyle = '#b9a'; ctx.lineWidth = 3; ctx.beginPath();
+    ctx.moveTo(fb.x, fb.y-fb.r); ctx.quadraticCurveTo(fb.x+11, fb.y-fb.r-14, fb.x+4, fb.y-fb.r-21); ctx.stroke();
+    ctx.fillStyle = pulse>0.5 ? '#ffd166' : '#ff7b3a'; ctx.beginPath(); ctx.arc(fb.x+4, fb.y-fb.r-23, 4+pulse*2, 0, 7); ctx.fill();
+    // countdown
+    ctx.fillStyle = '#fff'; ctx.font = '900 22px Anton, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(fb.countdown, fb.x, fb.y+1);
+    ctx.restore();
+  }
+
+  function drawBanner(){
+    if(!G || !G.banner) return;
+    const age = performance.now() - G.banner.t, DUR = 2400;
+    if(age > DUR){ G.banner = null; return; }
+    const p = age/DUR;
+    const a = p < 0.12 ? p/0.12 : (p > 0.78 ? (1-p)/0.22 : 1);   // fade in/out
+    const y = 150 - (1-Math.min(1,age/250))*20;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, a);
+    ctx.textAlign = 'center'; ctx.font = "900 52px Anton, sans-serif";
+    ctx.fillStyle = G.banner.color; ctx.shadowColor = G.banner.color; ctx.shadowBlur = 26;
+    ctx.fillText(G.banner.text, W/2, y);
+    ctx.shadowBlur = 0; ctx.font = "700 18px Inter, sans-serif"; ctx.fillStyle = 'rgba(255,255,255,.7)';
+    ctx.fillText('the battlefield shifts…', W/2, y + 34);
+    ctx.restore();
+  }
+
+  function frame(){
+    drawSky();                                  // full-bleed, no shake
+    ctx.save();
+    if(shake>0.4){
+      const dx=(Math.random()*2-1)*shake, dy=(Math.random()*2-1)*shake;
+      ctx.translate(dx,dy); shake*=0.86;
+    } else shake=0;
+    if(G){
+      drawTerrain();
+      if(phase==='playing' && !busy) drawPreview();
+      for(const t of G.tanks) drawTank(t, phase==='playing' && t.id===G.order[G.turnPtr] && !busy);
+      drawProjectiles();
+      if(G.floatBomb){ updateBomb(); drawBomb(); }
+      drawParticles();
+    } else {
+      drawTerrainPlaceholder();
+    }
+    ctx.restore();
+
+    if(G){
+      drawHUD();                                // HUD steady, outside the shake transform
+      drawBanner();
+      if(phase==='playing' && busy){
+        stepProjectiles();
+        if(G.projectiles.length===0){
+          if(!resolveAt) resolveAt = performance.now()+650;
+          else if(performance.now()>=resolveAt){
+            resolveAt=0;
+            if(!checkWin()){ tickBomb(); if(!checkWin()){ runEnvEvent(); if(!checkWin()) nextTurn(); } }
+          }
+        } else resolveAt=0;
+      }
+      // turn timeout → auto-fire
+      if(phase==='playing' && !busy && performance.now()>turnEndsAt){
+        const t=activeTank();
+        if(t){ if(!(t.ammo[t.weapon]===null||t.ammo[t.weapon]>0)) t.weapon=firstWeaponWithAmmo(t)||'single'; fire(t); }
+      }
+      stepParticles();
+    }
+    requestAnimationFrame(frame);
+  }
+  function drawTerrainPlaceholder(){
+    if(!terrain[0]) genTerrain();
+    drawTerrain();
+  }
+
+  makeStars();
+  genTerrain();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

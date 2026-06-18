@@ -1,0 +1,13 @@
+{
+  "name": "couch-cannons",
+  "version": "1.0.0",
+  "description": "A 2-8 player party artillery game. Play on your TV, aim with your phone.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
