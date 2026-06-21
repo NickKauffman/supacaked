@@ -160,12 +160,17 @@
   .swipehint .ar { font-size:40px; line-height:1; opacity:.7; }
   .swipehint .lbl { letter-spacing:2px; text-transform:uppercase; font-size:14px; margin:10px 0; }
   .swipehint small { letter-spacing:0; text-transform:none; font-size:12px; opacity:.8; }
-  .birdpick { display:none; gap:10px; justify-content:center; margin-top:6px; }
+  .birdpick { display:none; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:6px; }
   .birdpick.show { display:flex; }
-  .birdpick .bp { flex:1; max-width:120px; background:var(--panel); border:2px solid var(--panel-2); border-radius:16px; padding:10px; cursor:pointer; }
+  .birdpick .bp { position:relative; flex:1 1 64px; max-width:88px; background:var(--panel); border:2px solid var(--panel-2); border-radius:16px; padding:8px; cursor:pointer; text-align:center; }
   .birdpick .bp.sel { border-color:var(--green); background:color-mix(in srgb, var(--green) 14%, var(--panel)); }
-  .birdpick .bp canvas { width:64px; height:64px; }
-  .birdpick .bp .bn { font-family:'Anton',sans-serif; font-size:16px; }
+  .birdpick .bp canvas { width:54px; height:54px; }
+  .birdpick .bp .bn { font-family:'Anton',sans-serif; font-size:14px; }
+  .birdpick .bp.locked { cursor:not-allowed; }
+  .birdpick .bp.locked canvas { opacity:.22; filter:grayscale(1); }
+  .birdpick .bp.locked .bn { opacity:.4; }
+  .birdpick .bp .lock { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:900; font-size:13px; color:#fff; }
+  .birdpick .bp .lock small { font-size:11px; opacity:.85; }
 
   .homelink{ position:fixed; top:8px; left:8px; z-index:50; color:#f4f1fb; text-decoration:none; font-weight:900; font-size:12px; background:rgba(0,0,0,.4); padding:6px 11px; border-radius:9px; }
   .homelink:active{ background:rgba(0,0,0,.7); }
@@ -232,9 +237,14 @@
   <div class="myname"><span class="chip"></span><span id="myName">—</span></div>
   <div class="roster" id="lobbyRoster"></div>
   <div class="birdpick" id="birdpick">
-    <div class="bp" data-char="duck"><canvas width="64" height="64"></canvas><div class="bn">Duck</div></div>
-    <div class="bp" data-char="penguin"><canvas width="64" height="64"></canvas><div class="bn">Penguin</div></div>
-    <div class="bp" data-char="pelican"><canvas width="64" height="64"></canvas><div class="bn">Pelican</div></div>
+    <div class="bp" data-char="duck" data-unlock="0"><canvas width="64" height="64"></canvas><div class="bn">Duck</div></div>
+    <div class="bp" data-char="penguin" data-unlock="0"><canvas width="64" height="64"></canvas><div class="bn">Penguin</div></div>
+    <div class="bp" data-char="pelican" data-unlock="0"><canvas width="64" height="64"></canvas><div class="bn">Pelican</div></div>
+    <div class="bp" data-char="flamingo" data-unlock="500"><canvas width="64" height="64"></canvas><div class="bn">Flamingo</div></div>
+    <div class="bp" data-char="robin" data-unlock="1500"><canvas width="64" height="64"></canvas><div class="bn">Robin</div></div>
+    <div class="bp" data-char="parrot" data-unlock="3000"><canvas width="64" height="64"></canvas><div class="bn">Parrot</div></div>
+    <div class="bp" data-char="owl" data-unlock="6000"><canvas width="64" height="64"></canvas><div class="bn">Owl</div></div>
+    <div class="bp" data-char="dodo" data-unlock="10000"><canvas width="64" height="64"></canvas><div class="bn">Dodo</div></div>
   </div>
   <button id="startBtn" class="btn" style="display:none">START THE MATCH</button>
   <div class="note" id="lobbyNote">Waiting for the first player to start…</div>
@@ -500,18 +510,25 @@
   let selectedChar = localStorage.getItem('cc_char') || 'duck';
   function froggerPreview(canvas, type){
     const c = canvas.getContext('2d'), w = canvas.width, cx = w/2;
-    const P = { duck:{b:'#ffd23f',be:'#ff8c1a',belly:null,comb:'#ff5b5b'}, penguin:{b:'#2b2f3a',be:'#ff8c1a',belly:'#f4f1fb',comb:null}, pelican:{b:'#eef2f5',be:'#ffb020',belly:null,comb:null} }[type];
+    const P = { duck:{b:'#ffd23f',be:'#ff8c1a',belly:null,comb:'#ff5b5b'}, penguin:{b:'#2b2f3a',be:'#ff8c1a',belly:'#f4f1fb',comb:null}, pelican:{b:'#eef2f5',be:'#ffb020',belly:null,comb:null},
+      flamingo:{b:'#ff7aa8',be:'#1f1f28',belly:null,comb:null}, robin:{b:'#7a5b3a',be:'#ffcf5a',belly:'#e8743b',comb:null}, owl:{b:'#8a6a45',be:'#ffcf5a',belly:'#e8d8bf',comb:'#6b4f33'}, parrot:{b:'#3fbf6f',be:'#ff8c1a',belly:'#ffe066',comb:'#ff5b5b'}, dodo:{b:'#9aa0aa',be:'#ffb020',belly:null,comb:null} }[type]||{b:'#ffd23f',be:'#ff8c1a',belly:null,comb:null};
     c.clearRect(0,0,w,w); const px=(x,y,bw,bh,col)=>{ c.fillStyle=col; c.fillRect(x,y,bw,bh); };
     px(cx-13,32,26,24,P.b); if(P.belly) px(cx-8,38,16,18,P.belly);
     px(cx-11,12,22,22,P.b); if(P.comb) px(cx-4,6,8,6,P.comb);
     px(cx-6,20,5,6,'#15121f'); px(cx+1,20,5,6,'#15121f'); px(cx-5,29,10,7,P.be);
   }
+  let bestScore = +(localStorage.getItem('cc_best')||0);
+  function refreshLocks(){ document.querySelectorAll('.birdpick .bp').forEach(bp=>{ const need=+(bp.dataset.unlock||0), locked=bestScore<need;
+    bp.classList.toggle('locked', locked);
+    let lk=bp.querySelector('.lock'); if(locked){ if(!lk){ lk=document.createElement('div'); lk.className='lock'; bp.appendChild(lk); } lk.innerHTML='🔒<small>'+need+' pts</small>'; } else if(lk) lk.remove(); }); }
+  function noteScore(s){ if(s>bestScore){ bestScore=s; localStorage.setItem('cc_best', bestScore); refreshLocks(); } }
   function syncCharSel(){ document.querySelectorAll('.birdpick .bp').forEach(x=>x.classList.toggle('sel', x.dataset.char===selectedChar)); }
   document.querySelectorAll('.birdpick .bp').forEach(bp=>{
     froggerPreview(bp.querySelector('canvas'), bp.dataset.char);
-    bp.addEventListener('click', ()=>{ selectedChar=bp.dataset.char; localStorage.setItem('cc_char',selectedChar); syncCharSel(); socket.emit('ctrl:char',{type:selectedChar}); });
+    bp.addEventListener('click', ()=>{ if(bp.classList.contains('locked')) return; selectedChar=bp.dataset.char; localStorage.setItem('cc_char',selectedChar); syncCharSel(); socket.emit('ctrl:char',{type:selectedChar}); });
   });
-  syncCharSel();
+  { const sel=document.querySelector('.birdpick .bp[data-char="'+selectedChar+'"]'); if(sel && bestScore < +(sel.dataset.unlock||0)) selectedChar='duck'; }
+  refreshLocks(); syncCharSel();
   // Swipe to hop (tap = forward), like Crossy Road.
   let fgCanMove = false;
   (function setupSwipe(){
@@ -535,13 +552,16 @@
     if(state.phase==='lobby'){ show('lobby'); $('birdpick').classList.add('show'); syncCharSel(); updateStartBtn(); return; }
     $('birdpick').classList.remove('show'); show('fgame');
     $('fLevel').textContent = 'LEVEL '+(state.level||1);
-    if(mine){ $('fScore').textContent = mine.score; $('fScore').style.color = mine.color;
+    if(mine){ $('fScore').textContent = mine.score; $('fScore').style.color = mine.color; noteScore(mine.score);
       $('fLives').textContent = mine.alive ? '❤️'.repeat(Math.max(0,mine.lives)) : 'OUT'; }
-    const riding = mine&&mine.riding, carrying = mine&&mine.carrying, dead = mine&&!mine.alive, hasRocket = mine&&mine.rocket, rideEl=$('fRide');
+    const riding = mine&&mine.riding, carrying = mine&&mine.carrying, dead = mine&&!mine.alive, hasRocket = mine&&mine.rocket, hasEgg = mine&&mine.egg, hasShield = mine&&mine.shield, rideEl=$('fRide');
     if(state.phase==='over'){ rideEl.classList.remove('active'); rideEl.textContent = state.winner ? (state.winner.id===me.id?'🏆 You win!':state.winner.name+' wins!') : 'Game over'; }
+    else if(state.frozen){ rideEl.classList.add('active'); rideEl.textContent='⏱ TIME FROZEN — GO GO GO!'; }
     else if(hasRocket){ rideEl.classList.add('active'); rideEl.textContent='🚀 You grabbed a ROCKET — tap LAUNCH for a free point!'; }
+    else if(hasEgg){ rideEl.classList.add('active'); rideEl.textContent='🥚 GOLDEN EGG — reach the finish for 3× points!'; }
     else if(riding){ rideEl.classList.add('active'); rideEl.textContent='🪂 Riding '+(mine.ridingName||'a buddy')+' — '+mine.rideLeft+'s'; }
     else if(carrying){ rideEl.classList.remove('active'); rideEl.textContent='🐤 Giving a buddy a ride!'; }
+    else if(hasShield){ rideEl.classList.add('active'); rideEl.textContent='🛡 Shielded — one free hit!'; }
     else if(dead){ rideEl.classList.remove('active'); rideEl.textContent='Knocked out — watch the TV!'; }
     else { rideEl.classList.remove('active'); rideEl.textContent='Cross the road, ride the logs, grab the fish!'; }
     $('jumpOff').style.display = riding ? 'block' : 'none';

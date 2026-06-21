@@ -64,7 +64,7 @@
   <div class="lobby-grid">
     <div>
       <h1 class="title">FOWL<br>CROSSING</h1>
-      <p class="tag">2–8 players. Everyone grabs a phone, crosses together, and races for the fish. Jump on a buddy's back for a 5-second piggyback ride!</p>
+      <p class="tag">1–8 players. Everyone grabs a phone, crosses together, and races for the fish. Jump on a buddy's back for a 5-second piggyback ride!</p>
       <div class="joinbox">
         <div id="qr"></div>
         <div class="joininfo">
@@ -165,8 +165,13 @@
       level(){ on(); [523,659,784,1047,1319].forEach((f,i)=>setTimeout(()=>tone(f,f,0.15,'square',0.16),i*85)); },
       win(){ on(); [[523,0],[659,.12],[784,.24],[1047,.4],[1047,.56]].forEach(([f,d])=>tone(f,f,0.26,'square',0.18)); },
       levelup(){ on(); [[523,0],[659,90],[784,180],[1047,300],[1319,430],[1047,560],[1568,690]].forEach(([f,d])=>setTimeout(()=>{ tone(f,f,0.22,'square',0.18); tone(f/2,f/2,0.22,'triangle',0.09); },d)); },   // little celebratory fanfare
-      power(){ on(); [880,1175,1568].forEach((f,i)=>setTimeout(()=>tone(f,f*1.3,0.12,'square',0.16),i*70)); },                 // rocket pickup
+      power(){ on(); [880,1175,1568].forEach((f,i)=>setTimeout(()=>tone(f,f*1.3,0.12,'square',0.16),i*70)); },                 // item pickup
       launch(){ on(); tone(220,1900,0.5,'sawtooth',0.18); setTimeout(()=>tone(880,2300,0.3,'square',0.12),120); },              // rocket launch whoosh
+      freeze(){ on(); [1568,1319,1047,784,659].forEach((f,i)=>setTimeout(()=>tone(f,f,0.16,'sine',0.16),i*55)); setTimeout(()=>tone(330,330,0.5,'triangle',0.12),320); },   // shimmery time-stop
+      unfreeze(){ on(); [659,880,1175].forEach((f,i)=>setTimeout(()=>tone(f,f,0.1,'sine',0.13),i*50)); },                       // time resumes
+      shield(){ on(); tone(1400,700,0.12,'square',0.16); setTimeout(()=>tone(900,1600,0.12,'triangle',0.12),60); },             // clink/absorb
+      trainhorn(){ on(); tone(150,150,0.5,'sawtooth',0.22); setTimeout(()=>tone(115,115,0.6,'sawtooth',0.22),180); },           // low horn
+      trainpass(){ on(); if(!actx) return; const t=actx.currentTime,s=actx.createBufferSource(),buf=actx.createBuffer(1,actx.sampleRate*0.5,actx.sampleRate),d=buf.getChannelData(0); for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2); s.buffer=buf; const f=actx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=900; const g=actx.createGain(); g.gain.value=0.18; s.connect(f); f.connect(g); g.connect(master); s.start(t); },   // rushing whoosh
       weee(){ on(); if(!actx) return; const t=actx.currentTime, o=actx.createOscillator(), g=actx.createGain(), lfo=actx.createOscillator(), lg=actx.createGain();
         o.type='sawtooth';                                                  // buzzy kazoo "weeeee" that rides up and wobbles
         o.frequency.setValueAtTime(430,t); o.frequency.exponentialRampToValueAtTime(1500,t+0.55);
@@ -225,6 +230,7 @@
     defs.push({kind:'goal'});
     for(let p=pairs-1; p>=0; p--){
       for(let k=0;k<2;k++) defs.push({kind:'water', dir:(dir=-dir), speed:50+Math.random()*85});                                      // river (just below the goal for the top pair)
+      if(p===pairs-1) defs.push({kind:'rail'});                                                                                        // dedicated thin train track between the river and the road
       for(let k=0;k<2;k++) defs.push({kind:'road',  dir:(dir=-dir), speed:75+Math.random()*105, type:OBS_TYPES[oi++%OBS_TYPES.length]}); // road below it
       if(p>0) defs.push({kind:'safe'});
     }
@@ -243,9 +249,9 @@
     const level=1, rows=buildRows(level);
     const birds=new Map();
     players.forEach((p,i)=>{ const b={ id:p.id, name:p.name, color:p.color, type:p.type||'duck', connected:true,
-      lives:3, score:0, hop:0, dir:'up', deadAt:0, invulnUntil:0, riderOf:null, carrying:null, rideUntil:0, eliminated:false, hasRocket:false, shieldUntil:0, carryingEgg:false, idleSince:0,
+      lives:3, score:0, hop:0, dir:'up', deadAt:0, invulnUntil:0, riderOf:null, carrying:null, rideUntil:0, eliminated:false, hasRocket:false, shieldUntil:0, carryingEgg:false,
       slot:(i+1)/(players.length+1) }; birds.set(p.id,b); });
-    G={ rows, level, levelMult:1, fish:[false,false,false,false,false], birds, started:players.length, items:[], freezeUntil:0, levelClearUntil:0, lastHawk:performance.now(), train:null, nextTrain:performance.now()+8000+Math.random()*9000 };
+    G={ rows, level, levelMult:1, fish:[false,false,false,false,false], birds, started:players.length, items:[], freezeUntil:0, levelClearUntil:0, train:null, nextTrain:performance.now()+8000+Math.random()*9000 };
     birds.forEach(b=>spawnBird(b,true)); placeItems();
     phase='playing'; winner=null; hideOverlay('lobby'); hideOverlay('over'); broadcast(true);
   }
@@ -336,23 +342,26 @@
     if(dir==='up'&&b.laneIndex>0) b.laneIndex--; else if(dir==='down'&&b.laneIndex<G.rows.length-1) b.laneIndex++;
     else if(dir==='left') b.wx=Math.max(24,b.wx-COL); else if(dir==='right') b.wx=Math.min(WORLD_W-24,b.wx+COL); else return;
     b.hop=1; SFX.hop();
-    if(!b.carrying){ for(const o of G.birds.values()){ if(o===b||o.eliminated||o.deadAt) continue;
+    if(!b.carrying && !b.carryingEgg){ for(const o of G.birds.values()){ if(o===b||o.eliminated||o.deadAt||o.carryingEgg) continue;   // can't piggyback while either bird carries the golden egg
       if(o.laneIndex===b.laneIndex && Math.abs(o.wx-b.wx)<COL*0.7 && !o.carrying && !o.riderOf){ mount(b,o); break; } } }
-    collectRocket(b);   // grab a rocket on the spot we just hopped to (incl. end-spot rockets)
+    collectItem(b);   // grab whatever item we just hopped onto (incl. end-spot items)
     if(G.rows[b.laneIndex].kind==='goal') reachGoal(b);
   }
 
   function update(dt){
     const rows=(G?G.rows:bgRows);
-    for(const r of rows){ if(!r.ents||!r.dir) continue; const v=r.dir*r.speed*((G?G.levelMult:1))*dt;
+    const now=performance.now();
+    const frozen = !!(G && G.freezeUntil && now < G.freezeUntil);   // time-freeze clock halts traffic + logs
+    for(const r of rows){ if(!r.ents||!r.dir||frozen) continue; const v=r.dir*r.speed*((G?G.levelMult:1))*dt;
       for(const e of r.ents){ e.x+=v;
         if(r.dir>0 && e.x-e.w/2 > WORLD_W+GROUND_EXT) e.x-=r.span;       // wrap only once fully off the visible edge
         if(r.dir<0 && e.x+e.w/2 < -GROUND_EXT) e.x+=r.span; } }
     if(!G || phase!=='playing') return;
-    const now=performance.now();
-    // rocket flicker: on 5s, off 5s, then reappear somewhere new
-    if(G.rocket && !G.rocket.collected && now > G.rocket.until){
-      if(G.rocket.visible){ G.rocket.visible=false; G.rocket.until=now+ROCKET_OFF; } else placeRocket(); }
+    if(G._fz && !frozen){ G._fz=false; SFX.unfreeze(); } else if(frozen) G._fz=true;
+    // item flicker: each shows ITEM_ON, hides ITEM_OFF, then reappears as a fresh random item
+    if(G.items) for(const it of G.items){ if(it.collected) continue; if(now>it.until){
+      if(it.visible){ it.visible=false; it.until=now+ITEM_OFF; } else { const ni=newItem(); if(ni){ it.type=ni.type; it.lane=ni.lane; it.wx=ni.wx; it.visible=true; it.until=ni.until; } } } }
+    updateTrain(now,dt,frozen);
     // smooth, predictable hop: the visual position eases toward the logical cell
     const ek=Math.min(1, dt*13);
     for(const b of G.birds.values()){ if(b.eliminated||b.launch) continue;
@@ -365,7 +374,7 @@
         b.vx = L.fromX + (L.toX-L.fromX)*ex; b.vly = L.fromLane*(1-Math.pow(p,1.4)); b.launchZ = Math.sin(p*Math.PI)*80 + p*26;
         if(p>=1){ b.launch=null; b.launchZ=0;
           let slot=(L.slot>=0 && !G.fish[L.slot]) ? L.slot : G.fish.findIndex(f=>!f);
-          if(slot>=0){ G.fish[slot]=true; b.score+=100*G.level; SFX.eat(); }
+          if(slot>=0){ G.fish[slot]=true; const m=b.carryingEgg?3:1; b.score+=100*G.level*m; if(b.carryingEgg) b.carryingEgg=false; SFX.eat(); }
           if(G.fish.every(f=>f)) nextLevel(); else spawnBird(b,true); broadcast(true); }
         continue; }
       if(b.hop>0) b.hop=Math.max(0,b.hop-dt*5);
@@ -379,16 +388,26 @@
         continue; }
       const band=G.rows[b.laneIndex];
       if(band.kind==='safe' && Math.abs(b.vly-b.laneIndex)<0.35 && b.laneIndex<(b.checkpoint==null?1e9:b.checkpoint)) b.checkpoint=b.laneIndex;   // reaching a higher safe row banks a checkpoint
-      collectRocket(b);   // grab the rocket if we're sitting on it (road / log)
+      collectItem(b);   // grab any item we're sitting on (road / log)
       // Collisions use the VISUAL position and only count once the bird has actually hopped into the
       // lane and onto the spot — so you die on true contact, not the instant you press a direction.
       const settled = Math.abs(b.vly - b.laneIndex) < 0.35;
       if(band.kind==='water'){ let on=null; for(const e of band.ents){ if(Math.abs(b.vx-e.x) < e.w/2 + 8){ on=e; break; } }   // forgiving: landing on the log's edge still counts as standing on it
-        if(on){ b.wx+=band.dir*band.speed*G.levelMult*dt; if(b.wx < -GROUND_EXT+6 || b.wx > WORLD_W+GROUND_EXT-6) die(b); }   // only die riding off the visible edge
+        if(on){ if(!frozen) b.wx+=band.dir*band.speed*G.levelMult*dt; if(b.wx < -GROUND_EXT+6 || b.wx > WORLD_W+GROUND_EXT-6) die(b); }   // only die riding off the visible edge
         else if(settled && now>=b.invulnUntil) die(b); }
       else if(band.kind==='road'){ if(settled && now>=b.invulnUntil){ for(const e of band.ents){ if(Math.abs(b.vx-e.x) < e.w*0.44 + 7){ die(b); break; } } } }
+      if(G.train && G.train.phase==='run' && G.train.lane===b.laneIndex && settled && now>=b.invulnUntil && Math.abs(b.vx-G.train.x) < G.train.w/2 + 6) die(b);   // the train
     }
   }
+  // ---- train lane event: warn, then a fast train sweeps one road lane ----
+  function updateTrain(now,dt,frozen){
+    if(!G||phase!=='playing'||clearing()) return;
+    if(!G.train){ if(now>=G.nextTrain){ const roads=[]; G.rows.forEach((r,i)=>{ if(r.kind==='rail') roads.push(i); }); if(roads.length){ const lane=roads[Math.floor(Math.random()*roads.length)], dir=Math.random()<0.5?1:-1;
+      G.train={ lane, dir, phase:'warn', until:now+1600, w:150, x: dir>0 ? -GROUND_EXT-90 : WORLD_W+GROUND_EXT+90, speed:560 }; SFX.trainhorn(); flash('🚂 TRAIN COMING!','#ff5c49'); broadcast(true); } } return; }
+    const T=G.train;
+    if(T.phase==='warn'){ if(now>=T.until){ T.phase='run'; SFX.trainpass(); } return; }
+    if(T.phase==='run'){ if(!frozen) T.x += T.dir*T.speed*dt;
+      if((T.dir>0 && T.x > WORLD_W+GROUND_EXT+90) || (T.dir<0 && T.x < -GROUND_EXT-90)){ G.train=null; G.nextTrain=now+9000+Math.random()*10000; broadcast(true); } } }
 
   // ---- input from phones ----
   function roomLeaderId(){ const c=[...roster.values()].filter(p=>p.connected).sort((a,b)=>a.id-b.id); return c[0]?c[0].id:null; }
@@ -417,9 +436,9 @@
   function broadcast(force){ const now=performance.now(); if(!force && now-lastBroadcast<80) return; lastBroadcast=now;
     if(phase==='lobby'){ socket.emit('host:state',{ game:'frogger', phase:'lobby', level:1, winner:null,
       players:[...roster.values()].map(p=>({id:p.id,name:p.name,color:p.color,type:p.type,score:0,lives:3,alive:true,connected:p.connected})) }); return; }
-    socket.emit('host:state',{ game:'frogger', phase, level:G.level, winner,
+    socket.emit('host:state',{ game:'frogger', phase, level:G.level, winner, frozen:(G.freezeUntil>now),
       players:[...G.birds.values()].map(b=>({ id:b.id,name:b.name,color:b.color,type:b.type,score:b.score,lives:b.lives,alive:!b.eliminated,connected:b.connected,
-        riding:!!b.riderOf, ridingName:b.riderOf?((G.birds.get(b.riderOf)||{}).name||''):null, carrying:!!b.carrying, rocket:!!b.hasRocket,
+        riding:!!b.riderOf, ridingName:b.riderOf?((G.birds.get(b.riderOf)||{}).name||''):null, carrying:!!b.carrying, rocket:!!b.hasRocket, shield:(b.shieldUntil>now), egg:!!b.carryingEgg,
         rideLeft:b.riderOf?Math.max(0,Math.ceil((b.rideUntil-now)/1000)):0 })) });
   }
 
@@ -454,11 +473,16 @@
   }
 
   // ---- birds + models ----
-  function birdParts(type){ return {
+  function birdParts(type){ const M={
     duck:{body:'#ffd23f',head:'#ffd23f',belly:null,beak:'#ff8c1a',beakLong:false,foot:'#ff8c1a',comb:'#ff5b5b'},
     penguin:{body:'#2b2f3a',head:'#2b2f3a',belly:'#f4f1fb',beak:'#ff8c1a',beakLong:false,foot:'#ff8c1a',comb:null},
     pelican:{body:'#eef2f5',head:'#eef2f5',belly:null,beak:'#ffb020',beakLong:true,foot:'#ffb020',comb:null},
-  }[type]||this.duck; }
+    flamingo:{body:'#ff7aa8',head:'#ff7aa8',belly:null,beak:'#1f1f28',beakLong:true,foot:'#ff7aa8',comb:null},
+    robin:{body:'#7a5b3a',head:'#7a5b3a',belly:'#e8743b',beak:'#ffcf5a',beakLong:false,foot:'#ffcf5a',comb:null},
+    owl:{body:'#8a6a45',head:'#a9855a',belly:'#e8d8bf',beak:'#ffcf5a',beakLong:false,foot:'#ffcf5a',comb:'#6b4f33'},
+    parrot:{body:'#3fbf6f',head:'#3fbf6f',belly:'#ffe066',beak:'#ff8c1a',beakLong:false,foot:'#ff8c1a',comb:'#ff5b5b'},
+    dodo:{body:'#9aa0aa',head:'#9aa0aa',belly:null,beak:'#ffb020',beakLong:true,foot:'#ffb020',comb:null},
+  }; return M[type]||M.duck; }
   function drawBird(type,color,wx,wy,z){
     const p=birdParts(type);
     box(wx-9,wy,z,6,8,7,p.foot); box(wx+9,wy,z,6,8,7,p.foot);
@@ -503,12 +527,45 @@
     ctx.fillStyle='#c7ccd6'; const [nx,ny]=v3(cx,cy,z); ctx.fillRect(nx-5*S,ny-2*S,10*S,7*S);            // little metal nozzle under the bird
     for(let k=0;k<3;k++){ const a=t*8+k*2.1, dx=Math.cos(a)*16*S, dy=Math.sin(a)*9*S; ctx.fillStyle='rgba(255,255,255,.8)'; ctx.beginPath(); ctx.arc(sx+dx,sy-10*S+dy,1.6*S,0,7); ctx.fill(); } }   // sparkle
 
+  function itemGlow(x,y,col){ const g=ctx.createRadialGradient(x,y,2,x,y,30*S); g.addColorStop(0,col); g.addColorStop(1,col.replace(/[\d.]+\)$/,'0)')); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,30*S,0,7); ctx.fill(); }
+  function mClock(cx,cy){ const [sx,sy]=v3(cx,cy,6); const t=performance.now()/1000, y=sy-26*S+Math.sin(t*4)*3*S;
+    itemGlow(sx,y,'rgba(125,211,252,.6)'); ctx.save(); ctx.translate(sx,y); ctx.scale(S,S);
+    ctx.fillStyle='#e9f6ff'; ctx.beginPath(); ctx.arc(0,0,11,0,7); ctx.fill(); ctx.lineWidth=2.4; ctx.strokeStyle='#3a7bd5'; ctx.stroke();
+    ctx.fillStyle='#1f3a5f'; ctx.beginPath(); ctx.arc(0,0,1.6,0,7); ctx.fill();
+    ctx.strokeStyle='#1f3a5f'; ctx.lineWidth=1.8; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-7); ctx.moveTo(0,0); ctx.lineTo(Math.cos(t*2)*5,Math.sin(t*2)*5); ctx.stroke();
+    ctx.fillStyle='#3a7bd5'; ctx.fillRect(-2,-15,4,3); ctx.restore(); }
+  function mEgg(cx,cy){ const [sx,sy]=v3(cx,cy,6); const t=performance.now()/1000, y=sy-24*S+Math.sin(t*4)*3*S;
+    itemGlow(sx,y,'rgba(255,215,90,.65)'); ctx.save(); ctx.translate(sx,y); ctx.scale(S,S);
+    const g=ctx.createLinearGradient(-7,-12,7,12); g.addColorStop(0,'#fff1b8'); g.addColorStop(.5,'#ffd24a'); g.addColorStop(1,'#e0962a');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(0,0,8,11,0,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.6)'; ctx.beginPath(); ctx.ellipse(-2.5,-4,2,3.4,-0.3,0,7); ctx.fill(); ctx.restore(); }
+  function mShieldIcon(cx,cy){ const [sx,sy]=v3(cx,cy,6); const t=performance.now()/1000, y=sy-26*S+Math.sin(t*4)*3*S;
+    itemGlow(sx,y,'rgba(167,139,250,.6)'); ctx.save(); ctx.translate(sx,y); ctx.scale(S,S);
+    ctx.fillStyle='#a78bfa'; ctx.beginPath(); ctx.moveTo(0,-12); ctx.lineTo(10,-7); ctx.lineTo(10,3); ctx.quadraticCurveTo(0,14,0,14); ctx.quadraticCurveTo(-10,3,-10,3); ctx.lineTo(-10,-7); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.85)'; ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(7,-5.5); ctx.lineTo(7,2); ctx.quadraticCurveTo(0,10,0,10); ctx.quadraticCurveTo(-7,2,-7,2); ctx.lineTo(-7,-5.5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#a78bfa'; ctx.fillRect(-1.6,-6,3.2,11); ctx.fillRect(-5,-1.6,10,3.2); ctx.restore(); }
+  function mItem(it){ if(it.type==='rocket') mRocket(it.wx,G.rows[it.lane].wy); else if(it.type==='clock') mClock(it.wx,G.rows[it.lane].wy); else if(it.type==='egg') mEgg(it.wx,G.rows[it.lane].wy); else if(it.type==='shield') mShieldIcon(it.wx,G.rows[it.lane].wy); }
+  function mBubble(cx,cy,z){ const [sx,sy]=v3(cx,cy,z+14); const t=performance.now()/1000, r=26*S*(1+Math.sin(t*5)*0.04);
+    ctx.save(); ctx.strokeStyle='rgba(167,139,250,.9)'; ctx.lineWidth=2.5*S; ctx.beginPath(); ctx.arc(sx,sy,r,0,7); ctx.stroke();
+    ctx.fillStyle='rgba(167,139,250,.14)'; ctx.beginPath(); ctx.arc(sx,sy,r,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.6)'; ctx.beginPath(); ctx.arc(sx-r*0.4,sy-r*0.4,r*0.16,0,7); ctx.fill(); ctx.restore(); }
+  function mCarriedEgg(cx,cy,z){ const [sx,sy]=v3(cx,cy,z+30); ctx.save(); ctx.translate(sx,sy); ctx.scale(S,S);
+    const g=ctx.createLinearGradient(-5,-8,5,8); g.addColorStop(0,'#fff1b8'); g.addColorStop(1,'#e0962a'); ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(0,0,5,7,0,0,7); ctx.fill(); ctx.restore(); }
+  function mTrain(cx,cy,dir,w){ const [sx,sy]=v3(cx,cy,2); ctx.save();
+    box(cx,cy,2,w,40,30,'#d23b3b'); box(cx,cy,32,w-12,30,6,'#9c2a2a');
+    for(let i=-w/2+18;i<w/2-10;i+=26){ box(cx+i,cy,14,14,42,16,'#bfe7ff'); }   // windows strip
+    box(cx+dir*(w/2-6),cy,2,10,40,34,'#f2c14e'); box(cx+dir*(w/2+2),cy,16,5,18,12,'#fff3b0'); ctx.restore(); }
+
   // ---- ground ----
-  function drawGround(r){ const cx=WORLD_W/2, cy=r.wy;
-    const col=r.kind==='road'?C.road:r.kind==='water'?C.water:r.kind==='goal'?C.goal:(r.idx%2?C.grass:C.grassAlt);
-    box(cx,cy,-THICK,WORLD_W+GROUND_EXT*2,LANE_DEPTH,THICK,col);
+  function drawGround(r){ const cx=WORLD_W/2, cy=r.wy, fullW=WORLD_W+GROUND_EXT*2;
+    const col=r.kind==='road'?C.road:r.kind==='water'?C.water:r.kind==='goal'?C.goal:r.kind==='rail'?C.grassAlt:(r.idx%2?C.grass:C.grassAlt);
+    box(cx,cy,-THICK,fullW,LANE_DEPTH,THICK,col);
     if(r.kind==='road' && r.frontDivider){ for(let x=16;x<WORLD_W;x+=62) quad(x,cy-LANE_DEPTH/2,30,6,0.5,'#f2e9c9'); }   // lane divider between road lanes
     else if(r.kind==='water'){ for(let x=24+((performance.now()/30)%48);x<WORLD_W;x+=48) quad(x,cy-14,18,5,0.4,shade(C.water,28)); }
+    else if(r.kind==='rail'){ const bd=LANE_DEPTH*0.42;
+      quad(cx,cy,fullW,bd,0.45,'#7d6a52');                                                  // thin gravel bed
+      for(let x=-GROUND_EXT;x<WORLD_W+GROUND_EXT;x+=20) quad(x,cy,7,bd,0.5,'#4f4031');       // wooden ties
+      quad(cx,cy-bd*0.32,fullW,3,0.62,'#c2c6cf'); quad(cx,cy+bd*0.32,fullW,3,0.62,'#c2c6cf'); }  // two steel rails
     else if(r.kind==='goal'){ const slotW=WORLD_W/5; for(let i=0;i<5;i++){ const sx=(i+0.5)*slotW; quad(sx,cy,slotW*0.7,LANE_DEPTH*0.66,0.4,(G&&G.fish[i])?shade(C.goal,18):shade(C.goal,-22)); } }
   }
 
@@ -525,17 +582,23 @@
       else if(r.type==='bowling') mBowling(e.x,r.wy); else if(r.type==='skunk') mSkunk(e.x,r.wy,r.dir); else if(r.type==='moped') mMoped(e.x,r.wy,r.dir,e.color); else if(r.type==='bicycle') mBike(e.x,r.wy,r.dir,e.color); }});
       if(r.trees) for(const t of r.trees) sprites.push({wy:r.wy+18,draw:()=>mTree(t.x,r.wy)}); }
     if(G){ const slotW=WORLD_W/5; for(let i=0;i<5;i++) if(G.fish[i]) sprites.push({wy:rows[0].wy,draw:()=>mFish((i+0.5)*slotW,rows[0].wy,FISH_COLORS[i])});
-      if(G.rocket && G.rocket.visible && rows[G.rocket.lane]){ const rk=G.rocket, ry=rows[rk.lane].wy; sprites.push({wy:ry+2,draw:()=>mRocket(rk.wx,ry)}); }
+      if(G.items) for(const it of G.items){ if(it.visible && rows[it.lane]){ const ry=rows[it.lane].wy; sprites.push({wy:ry+2,draw:()=>mItem(it)}); } }
+      if(G.train && rows[G.train.lane]){ const T=G.train, ry=rows[T.lane].wy;
+        if(T.phase==='warn'){ sprites.push({wy:ry+1,draw:()=>{ if(Math.floor(performance.now()/180)%2===0){ const cx=WORLD_W/2; quad(cx,ry,WORLD_W+GROUND_EXT*2,LANE_DEPTH,0.6,'rgba(255,60,60,.32)'); } }}); }
+        else sprites.push({wy:ry+3,draw:()=>mTrain(T.x,ry,T.dir,T.w)}); }
       const laneWy=(l)=>(rows.length-1-l)*LANE_DEPTH, arc=(h)=>Math.sin((1-h)*Math.PI)*18;   // smooth up-and-over hop
       for(const b of G.birds.values()){ if(b.eliminated) continue; if(b.vx==null){ b.vx=b.wx; b.vly=b.laneIndex; }
         const flying=!!b.launch;
         let wx=b.vx, wy=laneWy(b.vly), z=flying?(b.launchZ||0):arc(b.hop), ride=false;
         if(b.riderOf){ const c=G.birds.get(b.riderOf); if(c){ wx=(c.vx==null?c.wx:c.vx); wy=laneWy(c.vly==null?c.laneIndex:c.vly); z=arc(c.hop)+24; ride=true; } }
-        const blink=!flying && performance.now()<b.invulnUntil && b.invulnUntil<1e14 && Math.floor(performance.now()/100)%2===0;
+        const blink=!flying && performance.now()<b.invulnUntil && b.invulnUntil<1e14 && !(performance.now()<b.shieldUntil) && Math.floor(performance.now()/100)%2===0;
+        const shielded=performance.now()<b.shieldUntil, egg=b.carryingEgg;
         sprites.push({wy: flying ? -1e9 : wy-(ride?2:0), draw:()=>{
-          if(flying){ mFlyingRocket(wx,wy,z); drawBird(b.type,b.color,wx,wy,z); nameTag(b,wx,wy,z); return; }
-          if(!blink){ const [sx,sy]=v3(wx,wy,0.5); ctx.fillStyle='rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(sx,sy,20*S,9*S,0,0,7); ctx.fill(); drawBird(b.type,b.color,wx,wy,z); } nameTag(b,wx,wy,z); }}); } }
+          if(flying){ mFlyingRocket(wx,wy,z); drawBird(b.type,b.color,wx,wy,z); if(egg) mCarriedEgg(wx,wy,z); nameTag(b,wx,wy,z); return; }
+          if(!blink){ const [sx,sy]=v3(wx,wy,0.5); ctx.fillStyle='rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(sx,sy,20*S,9*S,0,0,7); ctx.fill(); drawBird(b.type,b.color,wx,wy,z); if(egg) mCarriedEgg(wx,wy,z); if(shielded) mBubble(wx,wy,z); }
+          nameTag(b,wx,wy,z); }}); } }
     sprites.sort((a,b)=>b.wy-a.wy); for(const s of sprites) s.draw();
+    if(G && G.freezeUntil && performance.now()<G.freezeUntil){ ctx.fillStyle='rgba(180,225,255,.18)'; ctx.fillRect(0,0,CW,CH); }   // frozen tint
     if(G) drawLeaderboard(); drawFlash();
   }
   function drawLeaderboard(){ const list=[...G.birds.values()].sort((a,b)=>b.score-a.score);
@@ -559,8 +622,8 @@
   let __aiTicks=0, __hops=0;
   window.__ai = (on)=>{ AI_ON = (on !== false); return AI_ON; };
   window.__launch = (slow)=>{ const b=[...G.birds.values()].find(x=>!x.eliminated&&!x.launch); if(!b) return 'none'; rocketLaunch(b); if(slow&&b.launch) b.launch.dur=3200; return b.name; };   // test: force a rocket flight (slow=longer for screenshots)
-  window.__jump = (n)=>{ if(!G) return 'no game'; G.level=Math.max(1,n|0); G.levelMult=1+(G.level-1)*0.15; G.rows=buildRows(G.level); G.fish=[false,false,false,false,false]; G.levelClearUntil=0; G.birds.forEach(b=>{ if(!b.eliminated){ b.hasRocket=false; spawnBird(b,true); } }); placeRocket(); flash('LEVEL '+G.level+'!','#ffd166'); SFX.level(); broadcast(true); return G.level; };   // demo: fast-forward to a level
-  window.__dbg = ()=> !G ? {lvl:0,phase,roster:roster.size,room:ROOM,conn:socket.connected,birds:[]} : { lvl:G.level, fish:G.fish.filter(Boolean).length, ai:AI_ON, phase, clearing:clearing(), rocket:G.rocket?{lane:G.rocket.lane,wx:Math.round(G.rocket.wx),vis:G.rocket.visible,col:G.rocket.collected}:null, ticks:__aiTicks, hops:__hops, birds:[...G.birds.values()].map(b=>{ const up=G.rows[b.laneIndex-1]; return { n:b.name, lane:b.laneIndex, kind:(G.rows[b.laneIndex]||{}).kind, rk:!!b.hasRocket, wx:Math.round(b.wx), sc:b.score, d:b.deaths||0, dead:!!b.deadAt }; }) };
+  window.__jump = (n)=>{ if(!G) return 'no game'; G.level=Math.max(1,n|0); G.levelMult=1+(G.level-1)*0.15; G.rows=buildRows(G.level); G.fish=[false,false,false,false,false]; G.levelClearUntil=0; G.freezeUntil=0; G.train=null; G.nextTrain=performance.now()+6000; G.birds.forEach(b=>{ if(!b.eliminated){ b.hasRocket=false; b.carryingEgg=false; b.shieldUntil=0; spawnBird(b,true); } }); placeItems(); flash('LEVEL '+G.level+'!','#ffd166'); SFX.level(); broadcast(true); return G.level; };   // demo: fast-forward to a level
+  window.__dbg = ()=> !G ? {lvl:0,phase,roster:roster.size,room:ROOM,conn:socket.connected,birds:[]} : { lvl:G.level, fish:G.fish.filter(Boolean).length, ai:AI_ON, phase, clearing:clearing(), items:(G.items||[]).map(it=>({t:it.type,vis:it.visible})), frozen:G.freezeUntil>performance.now(), train:G.train?G.train.phase:null, ticks:__aiTicks, hops:__hops, birds:[...G.birds.values()].map(b=>({ n:b.name, lane:b.laneIndex, kind:(G.rows[b.laneIndex]||{}).kind, rk:!!b.hasRocket, sh:performance.now()<b.shieldUntil, egg:!!b.carryingEgg, wx:Math.round(b.wx), sc:b.score, d:b.deaths||0, dead:!!b.deadAt })) };
   function roadClear(lane, wx){
     const v = lane.dir*lane.speed*G.levelMult;        // px/s
     for(const e of lane.ents){
@@ -577,7 +640,7 @@
   function safeAt(lane, x){
     if(!lane) return false;
     if(x<18 || x>WORLD_W-18){ if(lane.kind!=='water') return false; }
-    if(lane.kind==='safe' || lane.kind==='goal') return true;
+    if(lane.kind==='safe' || lane.kind==='goal' || lane.kind==='rail') return true;
     if(lane.kind==='road') return roadClear(lane, x);
     if(lane.kind==='water') return logLanding(lane, x);
     return false;
@@ -601,7 +664,7 @@
     }
 
     // in danger right now (a car bearing down on my road lane / sitting in open water) -> escape
-    const danger = (cur.kind==='road' && !roadClear(cur,b.wx)) || (cur.kind==='water' && !logUnder(cur,b.wx));
+    const danger = (cur.kind==='road' && !roadClear(cur,b.wx)) || (cur.kind==='water' && !logUnder(cur,b.wx)) || (cur.kind==='rail' && G.train && G.train.lane===b.laneIndex);
     if(danger){
       if(safeAt(up, b.wx)){ playerHop(b,'up'); return; }
       if(safeAt(down, b.wx)){ playerHop(b,'down'); return; }                 // retreat to safety
@@ -616,6 +679,7 @@
     // safe right now: push toward the goal whenever the lane ahead is good
     if(!up) return;
     if(up.kind==='safe'){ playerHop(b,'up'); return; }
+    if(up.kind==='rail'){ if(!(G.train && G.train.lane===b.laneIndex-1)) playerHop(b,'up'); return; }   // cross the track unless a train is on its way
     if(up.kind==='road'){ if(roadClear(up,b.wx)) playerHop(b,'up'); return; }   // hold on safe ground for a gap; the danger check handles real threats
     if(up.kind==='water'){
       if(logLanding(up,b.wx)){ playerHop(b,'up'); return; }                      // a log will be under us as we land — hop on
