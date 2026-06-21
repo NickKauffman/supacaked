@@ -47,10 +47,13 @@
   #over .sub{color:var(--muted);font-weight:800;font-size:20px;}
   .homelink{position:fixed;bottom:14px;left:16px;z-index:30;color:#f6f3ff;text-decoration:none;font-weight:900;font-size:14px;background:rgba(0,0,0,.45);padding:8px 14px;border-radius:10px;}
   .homelink:hover{background:rgba(0,0,0,.7);}
+  #soundgate{position:fixed;bottom:14px;right:16px;z-index:30;cursor:pointer;background:rgba(0,0,0,.6);color:#fff;font-weight:800;font-size:14px;padding:9px 15px;border-radius:12px;border:1px solid rgba(255,255,255,.28);box-shadow:0 3px 12px rgba(0,0,0,.45);animation:sgpulse 1.6s ease-in-out infinite;}
+  @keyframes sgpulse{0%,100%{transform:scale(1);opacity:.92;}50%{transform:scale(1.05);opacity:1;}}
 </style>
 </head>
 <body>
 <a class="homelink" href="/">← Games</a>
+<div id="soundgate">🔊 Click anywhere to turn on sound</div>
 <div id="stage"><canvas id="cv" width="1920" height="1080"></canvas></div>
 
 <!-- LOBBY -->
@@ -137,7 +140,7 @@
       tone({ type:'sine', f:130*s, f2:34, dur:0.55*s, gain:0.45 });
     }
     return {
-      on,
+      on, state(){ return ctx?ctx.state:'none'; },
       fire(weapon){ on(); if(!ctx) return;
         if(weapon==='rail'){ tone({type:'sawtooth', f:1500, f2:180, dur:0.28, gain:0.22}); noise({filter:'highpass', f:2200, dur:0.16, gain:0.12}); }
         else if(weapon==='nuke'){ tone({type:'square', f:190, f2:48, dur:0.34, gain:0.3}); noise({filter:'lowpass', f:520, f2:120, dur:0.4, gain:0.3}); }
@@ -164,7 +167,14 @@
     };
   })();
   // Unlock audio on the first interaction with the TV (browsers gate sound behind a gesture).
-  ['pointerdown','keydown','touchstart','click'].forEach(ev => window.addEventListener(ev, () => SFX.on(), { once:false }));
+  // After a refresh the round is often driven from phones, so show a clear "click for sound" cue
+  // and let a click anywhere unlock it; hide the cue once audio is actually running.
+  const soundGate=document.getElementById('soundgate');
+  function refreshSound(){ if(soundGate) soundGate.style.display=(SFX.state()==='running')?'none':'block'; }
+  function unlockSound(){ SFX.on(); setTimeout(refreshSound,50); }
+  ['pointerdown','keydown','touchstart','click'].forEach(ev => window.addEventListener(ev, unlockSound, { once:false }));
+  if(soundGate) soundGate.addEventListener('click', unlockSound);
+  setInterval(refreshSound,1000); refreshSound();
 
   // ----- Weapon catalog (shared shape with the phone) -----
   // Blast radii are 40% larger than the original tuning.

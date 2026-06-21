@@ -51,10 +51,13 @@
   #over{ flex-direction:column; }
   #over .hsbox{ width:min(460px,86vw); margin-top:20px; }
   #over .hsbox h3{ color:#bfe7cf; text-align:center; }
+  #soundgate{position:fixed;bottom:14px;right:16px;z-index:30;cursor:pointer;background:rgba(8,30,22,.78);color:#fff;font-weight:800;font-size:14px;padding:9px 15px;border-radius:12px;border:1px solid rgba(255,255,255,.28);box-shadow:0 3px 12px rgba(0,0,0,.45);animation:sgpulse 1.6s ease-in-out infinite;}
+  @keyframes sgpulse{0%,100%{transform:scale(1);opacity:.92;}50%{transform:scale(1.05);opacity:1;}}
 </style>
 </head>
 <body>
 <a class="back" href="/">← Games</a>
+<div id="soundgate">🔊 Click anywhere to turn on sound</div>
 <div id="stage"><canvas id="cv" width="1100" height="840"></canvas></div>
 
 <div id="lobby" class="overlay show">
@@ -99,18 +102,37 @@
   const ROOM=(new URLSearchParams(location.search).get('room')||'').toUpperCase();
 
   // ---- world ----
-  const WORLD_W=640, LANE_DEPTH=80, COL=72, PLAYER_HALF=24, THICK=22;
+  const WORLD_W=640, LANE_DEPTH=72, COL=58, PLAYER_HALF=22, THICK=22;
   // ---- iso projection ----
-  const U={x:0.99,y:-0.15}, V={x:-0.28,y:-0.93}, GROUND_EXT=170;
-  let S=1, OX=0, OY=0;
-  function fitView(N){
-    let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
-    for(const x of [-GROUND_EXT,WORLD_W+GROUND_EXT]) for(const y of [-LANE_DEPTH/2,(N-1)*LANE_DEPTH+LANE_DEPTH/2]) for(const z of [-THICK,140]){
-      const px=x*U.x+y*V.x, py=x*U.y+y*V.y-z;
-      minX=Math.min(minX,px);maxX=Math.max(maxX,px);minY=Math.min(minY,py);maxY=Math.max(maxY,py);
+  const U={x:0.99,y:-0.15}, V={x:-0.28,y:-0.93}, GROUND_EXT=44;   // small visible border so the deadly edges are clear
+  let S=1, OX=0, OY=0, camSnap=true;
+  function projBounds(x0,x1,y0,y1,z0,z1){ let pxMin=1e9,pxMax=-1e9,pyMin=1e9,pyMax=-1e9;
+    for(const x of [x0,x1]) for(const y of [y0,y1]) for(const z of [z0,z1]){ const px=x*U.x+y*V.x, py=x*U.y+y*V.y-z;
+      pxMin=Math.min(pxMin,px);pxMax=Math.max(pxMax,px);pyMin=Math.min(pyMin,py);pyMax=Math.max(pyMax,py); }
+    return {pxMin,pxMax,pyMin,pyMax}; }
+  function boardProj(N){ return projBounds(-GROUND_EXT,WORLD_W+GROUND_EXT,-LANE_DEPTH/2,(N-1)*LANE_DEPTH+LANE_DEPTH/2,-THICK,140); }
+  function fitOf(b,padX,padY){ return Math.min((CW-padX)/(b.pxMax-b.pxMin),(CH-padY)/(b.pyMax-b.pyMin)); }
+  const S_L1 = fitOf(boardProj(6),70,90);   // "zoomed in like level 1" — the tightest the camera ever goes
+  function fitView(N){ const b=boardProj(N); S=fitOf(b,70,90); OX=(CW-(b.pxMin+b.pxMax)*S)/2; OY=(CH-(b.pyMin+b.pyMax)*S)/2+14; camSnap=true; }
+  // Dynamic camera: frame the active players. Start tight like level 1 and only pull back as they
+  // spread out; never tighter than level 1, never looser than the whole board, always inside the board.
+  function updateCamera(){
+    const rows=(G?G.rows:bgRows); if(!rows) return; const N=rows.length, board=boardProj(N);
+    const Smin=fitOf(board,70,90);
+    let tS,tOX,tOY, x0=1e9,x1=-1e9,y0=1e9,y1=-1e9,any=false;
+    if(G && phase==='playing'){ for(const b of G.birds.values()){ if(b.eliminated||b.deadAt||b.launch||!b.connected) continue;
+      const wx=(b.vx==null?b.wx:b.vx), wy=(N-1-(b.vly==null?b.laneIndex:b.vly))*LANE_DEPTH;
+      x0=Math.min(x0,wx);x1=Math.max(x1,wx);y0=Math.min(y0,wy);y1=Math.max(y1,wy);any=true; } }
+    if(!any){ tS=Smin; tOX=(CW-(board.pxMin+board.pxMax)*tS)/2; tOY=(CH-(board.pyMin+board.pyMax)*tS)/2+14; }
+    else { x0-=COL*1.1;x1+=COL*1.1;y0-=LANE_DEPTH*0.9;y1+=LANE_DEPTH*0.9;
+      x0=Math.max(x0,-GROUND_EXT);x1=Math.min(x1,WORLD_W+GROUND_EXT);y0=Math.max(y0,-LANE_DEPTH/2);y1=Math.min(y1,(N-1)*LANE_DEPTH+LANE_DEPTH/2);
+      tS=Math.max(Smin, Math.min(S_L1, fitOf(projBounds(x0,x1,y0,y1,0,120),90,120)));
+      const cx=(x0+x1)/2, cy=(y0+y1)/2, cpx=cx*U.x+cy*V.x, cpy=cx*U.y+cy*V.y-60;
+      tOX=CW/2-cpx*tS; tOY=CH/2-cpy*tS+14;
+      if((board.pxMax-board.pxMin)*tS>=CW) tOX=Math.max(CW-board.pxMax*tS, Math.min(-board.pxMin*tS, tOX)); else tOX=(CW-(board.pxMin+board.pxMax)*tS)/2;
+      if((board.pyMax-board.pyMin)*tS>=CH) tOY=Math.max(CH-board.pyMax*tS, Math.min(-board.pyMin*tS, tOY)); else tOY=(CH-(board.pyMin+board.pyMax)*tS)/2+14;
     }
-    S=Math.min((CW-70)/(maxX-minX),(CH-90)/(maxY-minY));
-    OX=(CW-(minX+maxX)*S)/2; OY=(CH-(minY+maxY)*S)/2 + 14;
+    if(camSnap){ S=tS;OX=tOX;OY=tOY;camSnap=false; } else { const k=0.09; S+=(tS-S)*k;OX+=(tOX-OX)*k;OY+=(tOY-OY)*k; }
   }
   function v3(x,y,z){ return [OX+(x*U.x+y*V.x)*S, OY+(x*U.y+y*V.y-z)*S]; }
   function shade(hex,a){ const n=parseInt(hex.slice(1),16); let r=(n>>16)+a,g=((n>>8)&255)+a,b=(n&255)+a;
@@ -135,16 +157,34 @@
       o.type=type||'square'; o.frequency.setValueAtTime(f,t); if(f2) o.frequency.exponentialRampToValueAtTime(Math.max(1,f2),t+dur);
       g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(gain||0.2,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
       o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+0.03); }
-    return { on,
+    return { on, state(){ return actx?actx.state:'none'; },
       hop(){ on(); tone(440,660,0.07,'square',0.12); },
       eat(){ on(); [660,880,1175].forEach((f,i)=>setTimeout(()=>tone(f,f*1.2,0.11,'triangle',0.16),i*60)); },
       mount(){ on(); tone(300,720,0.18,'square',0.18); },
       die(){ on(); tone(300,80,0.45,'sawtooth',0.2); },
       level(){ on(); [523,659,784,1047,1319].forEach((f,i)=>setTimeout(()=>tone(f,f,0.15,'square',0.16),i*85)); },
       win(){ on(); [[523,0],[659,.12],[784,.24],[1047,.4],[1047,.56]].forEach(([f,d])=>tone(f,f,0.26,'square',0.18)); },
+      levelup(){ on(); [[523,0],[659,90],[784,180],[1047,300],[1319,430],[1047,560],[1568,690]].forEach(([f,d])=>setTimeout(()=>{ tone(f,f,0.22,'square',0.18); tone(f/2,f/2,0.22,'triangle',0.09); },d)); },   // little celebratory fanfare
+      power(){ on(); [880,1175,1568].forEach((f,i)=>setTimeout(()=>tone(f,f*1.3,0.12,'square',0.16),i*70)); },                 // rocket pickup
+      launch(){ on(); tone(220,1900,0.5,'sawtooth',0.18); setTimeout(()=>tone(880,2300,0.3,'square',0.12),120); },              // rocket launch whoosh
+      weee(){ on(); if(!actx) return; const t=actx.currentTime, o=actx.createOscillator(), g=actx.createGain(), lfo=actx.createOscillator(), lg=actx.createGain();
+        o.type='sawtooth';                                                  // buzzy kazoo "weeeee" that rides up and wobbles
+        o.frequency.setValueAtTime(430,t); o.frequency.exponentialRampToValueAtTime(1500,t+0.55);
+        o.frequency.exponentialRampToValueAtTime(1150,t+0.8); o.frequency.exponentialRampToValueAtTime(1550,t+1.0);
+        lfo.type='square'; lfo.frequency.value=16; lg.gain.value=55; lfo.connect(lg); lg.connect(o.frequency);   // vibrato = kazoo buzz
+        g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.2,t+0.05); g.gain.setValueAtTime(0.2,t+0.85); g.gain.exponentialRampToValueAtTime(0.0001,t+1.15);
+        o.connect(g); g.connect(master); o.start(t); lfo.start(t); o.stop(t+1.2); lfo.stop(t+1.2); },
     };
   })();
-  ['pointerdown','keydown','touchstart'].forEach(ev=>window.addEventListener(ev,()=>SFX.on(),{passive:true}));
+  // Browsers start audio "suspended" until a gesture ON this page. After a refresh the game is
+  // often driven from phones, so the TV never gets that gesture -> silence. Show a clear cue and
+  // let a click ANYWHERE (or on the cue) unlock sound; hide it once audio is actually running.
+  const soundGate=document.getElementById('soundgate');
+  function refreshSound(){ if(soundGate) soundGate.style.display=(SFX.state()==='running')?'none':'block'; }
+  function unlockSound(){ SFX.on(); setTimeout(refreshSound,50); }
+  ['pointerdown','keydown','touchstart'].forEach(ev=>window.addEventListener(ev,unlockSound,{passive:true}));
+  if(soundGate) soundGate.addEventListener('click',unlockSound);
+  setInterval(refreshSound,1000); refreshSound();
 
   // ---- palette ----
   const C={ grass:'#8ed24f', grassAlt:'#86c948', road:'#52525c', water:'#3aa0e0', log:'#9a6a39', logAlt:'#85592e', treeT:'#3f9c3a', treeT2:'#54b047', trunk:'#6b4a2b', goal:'#2f8f74' };
@@ -158,21 +198,34 @@
 
   // ---- progressive board ----
   function laneEntities(r){
-    const ents=[];
-    if(r.kind==='water'){ const count=3, span=WORLD_W+170, sp=span/count;
-      for(let i=0;i<count;i++) ents.push({x:i*sp-85+Math.random()*30, w:110+Math.random()*40, color:(i%2?C.log:C.logAlt)}); r.span=span; }
-    else if(r.kind==='road'){ const W_BY={skunk:54,moped:92,bicycle:74,bowling:46}[r.type], count=3, span=WORLD_W+170, sp=span/count;
-      for(let i=0;i<count;i++) ents.push({x:i*sp-85+Math.random()*40, w:W_BY, color:VEH_COLOR()}); r.span=span; }
+    const ents=[]; const water=r.kind==='water', road=r.kind==='road';
+    if(!water && !road) return ents;
+    const span = WORLD_W + 2*GROUND_EXT + 220; r.span = span;   // long enough to slide fully off and back on
+    const baseW = road ? {skunk:54,moped:92,bicycle:74,bowling:46}[r.type] : 0;
+    // Walk across the visible lane laying down entities with uneven, random gaps — so rows
+    // end up with different amounts and never look evenly spaced.
+    const maxN = road ? 4 : 6;                       // cap density so a row is never impossible to pass
+    let x = -GROUND_EXT - 70 - Math.random()*90;
+    while(x < WORLD_W + GROUND_EXT && ents.length < maxN){
+      const w = water ? 100+Math.random()*80 : baseW;
+      ents.push(water ? { x:x+w/2, w, color:(ents.length%2?C.log:C.logAlt) }
+                      : { x:x+w/2, w, color:VEH_COLOR() });
+      const gap = water ? 50+Math.random()*95 : 100+Math.random()*180;   // roads spaced out so there's always a dodgeable gap
+      x += w + gap;
+    }
+    if(!ents.length) ents.push(water ? {x:WORLD_W/2,w:140,color:C.log} : {x:WORLD_W/2,w:baseW,color:VEH_COLOR()});
     return ents;
   }
   function laneTrees(r){ if(r.kind!=='safe') return []; const t=[]; [0.06,0.94].forEach(c=>{ if(Math.random()<0.85) t.push({x:c*WORLD_W}); }); if(Math.random()<0.4) t.push({x:(0.2+Math.random()*0.6)*WORLD_W}); return t; }
   // Level 1 -> 1 road+water pair; +1 pair every 2 levels (lvl3 -> 2 pairs ...). Speeds ramp with level.
   function buildRows(level){
-    const pairs=Math.ceil(level/2), defs=[]; let oi=0, dir=1;
+    // Every level adds one full road+river PAIR, with the river nearest the goal — so the last
+    // thing before the finish is always a river. L1 = road,river ; L2 = road,river,road,river …
+    const pairs = Math.min(5, level), defs=[]; let oi=0, dir=1;
     defs.push({kind:'goal'});
-    for(let p=pairs-1;p>=0;p--){
-      for(let k=0;k<2;k++){ defs.push({kind:'water', dir:(dir=-dir), speed:70+Math.random()*40}); }
-      for(let k=0;k<2;k++){ defs.push({kind:'road', dir:(dir=-dir), speed:95+Math.random()*55, type:OBS_TYPES[oi++%OBS_TYPES.length]}); }
+    for(let p=pairs-1; p>=0; p--){
+      for(let k=0;k<2;k++) defs.push({kind:'water', dir:(dir=-dir), speed:50+Math.random()*85});                                      // river (just below the goal for the top pair)
+      for(let k=0;k<2;k++) defs.push({kind:'road',  dir:(dir=-dir), speed:75+Math.random()*105, type:OBS_TYPES[oi++%OBS_TYPES.length]}); // road below it
       if(p>0) defs.push({kind:'safe'});
     }
     defs.push({kind:'safe'});
@@ -190,67 +243,148 @@
     const level=1, rows=buildRows(level);
     const birds=new Map();
     players.forEach((p,i)=>{ const b={ id:p.id, name:p.name, color:p.color, type:p.type||'duck', connected:true,
-      lives:3, score:0, hop:0, dir:'up', deadAt:0, invulnUntil:0, riderOf:null, carrying:null, rideUntil:0, eliminated:false,
+      lives:3, score:0, hop:0, dir:'up', deadAt:0, invulnUntil:0, riderOf:null, carrying:null, rideUntil:0, eliminated:false, hasRocket:false, shieldUntil:0, carryingEgg:false, idleSince:0,
       slot:(i+1)/(players.length+1) }; birds.set(p.id,b); });
-    G={ rows, level, levelMult:1, fish:[false,false,false,false,false], birds, started:players.length };
-    birds.forEach(b=>spawnBird(b,true));
+    G={ rows, level, levelMult:1, fish:[false,false,false,false,false], birds, started:players.length, items:[], freezeUntil:0, levelClearUntil:0, lastHawk:performance.now(), train:null, nextTrain:performance.now()+8000+Math.random()*9000 };
+    birds.forEach(b=>spawnBird(b,true)); placeItems();
     phase='playing'; winner=null; hideOverlay('lobby'); hideOverlay('over'); broadcast(true);
   }
   function spawnBird(b,full){ b.wx=Math.max(40,Math.min(WORLD_W-40, b.slot*WORLD_W)); b.laneIndex=G.rows.length-1; b.deadAt=0; b.hop=0;
+    if(full) b.checkpoint=G.rows.length-1;   // fresh start / new level — checkpoint back to the bottom bank
     if(b.riderOf){ const c=G.birds.get(b.riderOf); if(c) c.carrying=null; } b.riderOf=null; if(b.carrying){ const r=G.birds.get(b.carrying); if(r){ r.riderOf=null; } } b.carrying=null;
+    b.vx=b.wx; b.vly=b.laneIndex;   // snap the visual position so respawns don't slide across the board
     b.invulnUntil=performance.now()+(full?900:1100); }
-  function nextLevel(){ G.level++; G.levelMult=1+(G.level-1)*0.22; G.rows=buildRows(G.level); G.fish=[false,false,false,false,false];
-    G.birds.forEach(b=>{ if(!b.eliminated) spawnBird(b,true); }); flash('LEVEL '+G.level+'!','#ffd166'); SFX.level(); broadcast(true); }
+  const LEVEL_CLEAR_MS=1900;
+  function clearing(){ return !!(G && G.levelClearUntil && performance.now() < G.levelClearUntil); }
+  // Level beaten: pause for a short celebration so nobody dies mid-jump when the board rebuilds.
+  function nextLevel(){ if(!G || G.levelClearUntil) return;
+    const now=performance.now(); G.levelClearUntil = now + LEVEL_CLEAR_MS; G.items=[]; G.train=null; G.freezeUntil=0;
+    G.birds.forEach(b=>{ if(!b.eliminated) b.invulnUntil = Math.max(b.invulnUntil, now + LEVEL_CLEAR_MS + 250); });   // invincible through the celebration
+    flash('LEVEL '+G.level+' COMPLETE!','#34d399'); SFX.levelup(); broadcast(true);
+    setTimeout(advanceLevel, LEVEL_CLEAR_MS); }
+  function advanceLevel(){ if(!G) return;
+    G.level++; G.levelMult=1+(G.level-1)*0.15; G.rows=buildRows(G.level); G.fish=[false,false,false,false,false]; G.levelClearUntil=0;
+    G.birds.forEach(b=>{ if(!b.eliminated) spawnBird(b,true); }); placeItems(); G.nextTrain=performance.now()+8000+Math.random()*9000;   // keep any unused rocket — it carries to the next level
+    flash('LEVEL '+G.level+'!','#ffd166'); SFX.level(); broadcast(true); }
+
+  // ---- power-up items: two per level, each shows 15s / hides 3s, then reappears as a fresh random item ----
+  const ITEM_ON=15000, ITEM_OFF=3000, ITEM_TYPES=['rocket','rocket','clock','shield','egg'];   // rocket weighted a touch
+  function newItem(){ if(!G) return null;
+    const cands=[]; G.rows.forEach((r,i)=>{ if(r.kind==='road'||r.kind==='water'||r.kind==='goal') cands.push(i); });
+    if(!cands.length) return null;
+    const lane=cands[Math.floor(Math.random()*cands.length)];
+    let wx; if(G.rows[lane].kind==='goal'){ const s=Math.floor(Math.random()*5); wx=(s+0.5)*(WORLD_W/5); } else wx=70+Math.random()*(WORLD_W-140);
+    return { type:ITEM_TYPES[Math.floor(Math.random()*ITEM_TYPES.length)], lane, wx, visible:true, collected:false, until:performance.now()+ITEM_ON }; }
+  function placeItems(){ if(!G) return; G.items=[]; for(let i=0;i<2;i++){ const it=newItem(); if(it) G.items.push(it); } }
+  function placeRocket(){ placeItems(); }   // legacy alias for existing call sites
+  function itemEffect(b,type){
+    if(type==='rocket'){
+      if(b.carrying){ const rid=b.carrying; rocketLaunch(b); const r=G.birds.get(rid); if(r) rocketLaunch(r); flash('Piggyback ROCKET — both blast off! 🚀','#22d3ee'); }
+      else { b.hasRocket=true; flash(b.name+' grabbed a ROCKET!','#ffd166'); }
+      SFX.power();
+    } else if(type==='clock'){ G.freezeUntil=performance.now()+3000; SFX.freeze(); flash('TIME FREEZE! ⏱','#7dd3fc'); }
+    else if(type==='shield'){ b.shieldUntil=performance.now()+8000; SFX.power(); flash(b.name+' got a SHIELD!','#a78bfa'); }
+    else if(type==='egg'){ b.carryingEgg=true; SFX.power(); flash(b.name+' grabbed the GOLDEN EGG — finish it for 3×!','#ffd166'); }
+  }
+  function collectItem(b){ if(!G||!G.items||b.eliminated||b.deadAt||b.riderOf) return false;
+    for(const it of G.items){ if(!it.visible||it.collected) continue;
+      if(b.laneIndex!==it.lane || Math.abs(b.wx-it.wx)>34) continue;
+      if(it.type==='rocket' && b.hasRocket && !b.carrying) continue;   // already holding a rocket
+      if(it.type==='egg' && b.carryingEgg) continue;
+      it.collected=true; it.visible=false; itemEffect(b,it.type); broadcast(true); return true; }
+    return false; }
+  function dropEgg(b){ if(!b.carryingEgg||!G) return; b.carryingEgg=false;   // knocked out while carrying — egg drops back on the board
+    if(G.items){ G.items.push({ type:'egg', lane:b.laneIndex, wx:b.wx, visible:true, collected:false, until:performance.now()+ITEM_ON }); } }
+  function rocketLaunch(b){ if(!G||b.eliminated||b.launch) return;
+    if(b.riderOf) dismount(b);
+    if(b.carrying){ const r=G.birds.get(b.carrying); if(r){ r.riderOf=null; r.rideUntil=0; r.wx=b.wx; r.laneIndex=b.laneIndex; r.invulnUntil=performance.now()+800; } b.carrying=null; }
+    const now=performance.now(), slot=G.fish.findIndex(f=>!f), toX = slot>=0 ? (slot+0.5)*(WORLD_W/5) : b.wx;
+    b.invulnUntil = now + 1400; b.hop=0;
+    b.launch = { t0:now, dur:1050, fromX:(b.vx==null?b.wx:b.vx), fromLane:(b.vly==null?b.laneIndex:b.vly), toX, slot };   // flight handled in update()
+    SFX.weee(); flash(b.name+' blasts off! 🚀','#22d3ee'); broadcast(true); }
   function flash(m,c){ flashMsg={m,c}; flashT=performance.now(); }
 
   function reachGoal(b){ const slotW=WORLD_W/5, idx=Math.max(0,Math.min(4,Math.floor(b.wx/slotW))), slotX=(idx+0.5)*slotW;
-    if(!G.fish[idx] && Math.abs(b.wx-slotX)<slotW*0.45){ G.fish[idx]=true; b.score+=100*G.level; SFX.eat();
+    if(!G.fish[idx] && Math.abs(b.wx-slotX)<slotW*0.45){ G.fish[idx]=true; const mult=b.carryingEgg?3:1; b.score+=100*G.level*mult; SFX.eat();
+      if(b.carryingEgg){ b.carryingEgg=false; flash(b.name+' delivered the GOLDEN EGG! 3×','#ffd166'); }
       if(G.fish.every(f=>f)) nextLevel(); else spawnBird(b,true); }
     else die(b); }
   function die(b){ if(performance.now()<b.invulnUntil || b.deadAt) return;
-    // free any rider on this bird's back (they survive)
-    if(b.carrying){ const r=G.birds.get(b.carrying); if(r){ r.riderOf=null; r.invulnUntil=performance.now()+800; } b.carrying=null; }
+    // drop any rider on this bird's back — leave them right where we are, and they survive
+    if(b.carrying){ const r=G.birds.get(b.carrying); if(r){ r.wx=b.wx; r.laneIndex=b.laneIndex; r.riderOf=null; r.rideUntil=0; r.invulnUntil=performance.now()+800; } b.carrying=null; }
     if(b.riderOf){ const c=G.birds.get(b.riderOf); if(c) c.carrying=null; b.riderOf=null; }
-    b.lives--; SFX.die();
+    SFX.die();
+    if(AI_ON){ b.deaths=(b.deaths||0)+1; b.deadAt=performance.now(); return; }   // demo bots respawn forever so we can watch the level climb
+    b.lives--;
     if(b.lives<=0){ b.eliminated=true; checkEnd(); }
     else { b.deadAt=performance.now(); }
   }
-  function checkEnd(){ const alive=[...G.birds.values()].filter(b=>!b.eliminated);
-    if((G.started>=2 && alive.length<=1) || (G.started===1 && alive.length===0)){
+  // Game over only once EVERY player has lost all their lives (or left). Last ones standing keep going.
+  function checkEnd(){ const alive=[...G.birds.values()].filter(b=>!b.eliminated && b.connected);
+    if(alive.length===0){
       phase='over'; const all=[...G.birds.values()].sort((a,b)=>b.score-a.score); winner=all[0]?{id:all[0].id,name:all[0].name,color:all[0].color,score:all[0].score}:null;
       if(winner){ $('winnerName').textContent=winner.name+' wins!'; $('winnerName').style.color=winner.color; } showOverlay('over'); SFX.win();
       const hs=recordScores(); renderHS($('hsOver'),hs); renderHS($('hsLobby'),hs); broadcast(true); }
   }
   function mount(rider,carrier){ rider.riderOf=carrier.id; carrier.carrying=rider.id; rider.rideUntil=performance.now()+5000; rider.invulnUntil=1e15; SFX.mount(); flash(rider.name+' hops on '+carrier.name+'!','#22d3ee'); }
-  function dismount(rider){ if(!rider.riderOf) return; const c=G.birds.get(rider.riderOf); if(c) c.carrying=null; rider.riderOf=null; rider.rideUntil=0; rider.invulnUntil=performance.now()+700; }
+  // Dismount leaves the rider exactly where the carrier is now (not back at the start).
+  function dismount(rider){ if(!rider.riderOf) return; const c=G.birds.get(rider.riderOf); if(c){ rider.wx=c.wx; rider.laneIndex=c.laneIndex; c.carrying=null; } rider.riderOf=null; rider.rideUntil=0; rider.invulnUntil=performance.now()+700; }
 
-  function playerHop(b,dir){ if(b.deadAt||b.riderOf||b.eliminated) return; b.dir=dir;
+  function playerHop(b,dir){ if(b.deadAt||b.riderOf||b.eliminated||b.launch||clearing()) return; b.dir=dir; __hops++;
     if(dir==='up'&&b.laneIndex>0) b.laneIndex--; else if(dir==='down'&&b.laneIndex<G.rows.length-1) b.laneIndex++;
     else if(dir==='left') b.wx=Math.max(24,b.wx-COL); else if(dir==='right') b.wx=Math.min(WORLD_W-24,b.wx+COL); else return;
     b.hop=1; SFX.hop();
     if(!b.carrying){ for(const o of G.birds.values()){ if(o===b||o.eliminated||o.deadAt) continue;
       if(o.laneIndex===b.laneIndex && Math.abs(o.wx-b.wx)<COL*0.7 && !o.carrying && !o.riderOf){ mount(b,o); break; } } }
+    collectRocket(b);   // grab a rocket on the spot we just hopped to (incl. end-spot rockets)
     if(G.rows[b.laneIndex].kind==='goal') reachGoal(b);
   }
 
   function update(dt){
     const rows=(G?G.rows:bgRows);
     for(const r of rows){ if(!r.ents||!r.dir) continue; const v=r.dir*r.speed*((G?G.levelMult:1))*dt;
-      for(const e of r.ents){ e.x+=v; if(r.dir>0&&e.x-e.w/2>WORLD_W) e.x-=r.span; if(r.dir<0&&e.x+e.w/2<0) e.x+=r.span; } }
+      for(const e of r.ents){ e.x+=v;
+        if(r.dir>0 && e.x-e.w/2 > WORLD_W+GROUND_EXT) e.x-=r.span;       // wrap only once fully off the visible edge
+        if(r.dir<0 && e.x+e.w/2 < -GROUND_EXT) e.x+=r.span; } }
     if(!G || phase!=='playing') return;
     const now=performance.now();
+    // rocket flicker: on 5s, off 5s, then reappear somewhere new
+    if(G.rocket && !G.rocket.collected && now > G.rocket.until){
+      if(G.rocket.visible){ G.rocket.visible=false; G.rocket.until=now+ROCKET_OFF; } else placeRocket(); }
+    // smooth, predictable hop: the visual position eases toward the logical cell
+    const ek=Math.min(1, dt*13);
+    for(const b of G.birds.values()){ if(b.eliminated||b.launch) continue;
+      if(b.vx==null){ b.vx=b.wx; b.vly=b.laneIndex; }
+      b.vx += (b.wx-b.vx)*ek; b.vly += (b.laneIndex-b.vly)*ek; }
     for(const b of G.birds.values()){
       if(b.eliminated) continue;
-      if(b.hop>0) b.hop=Math.max(0,b.hop-dt*6);
+      // rocket joyride: arc up the board to the finish, then bank the point on arrival
+      if(b.launch){ const L=b.launch, p=Math.min(1,(now-L.t0)/L.dur), ex=p*p*(3-2*p);
+        b.vx = L.fromX + (L.toX-L.fromX)*ex; b.vly = L.fromLane*(1-Math.pow(p,1.4)); b.launchZ = Math.sin(p*Math.PI)*80 + p*26;
+        if(p>=1){ b.launch=null; b.launchZ=0;
+          let slot=(L.slot>=0 && !G.fish[L.slot]) ? L.slot : G.fish.findIndex(f=>!f);
+          if(slot>=0){ G.fish[slot]=true; b.score+=100*G.level; SFX.eat(); }
+          if(G.fish.every(f=>f)) nextLevel(); else spawnBird(b,true); broadcast(true); }
+        continue; }
+      if(b.hop>0) b.hop=Math.max(0,b.hop-dt*5);
       if(b.riderOf){ const c=G.birds.get(b.riderOf);
+        if(c && !c.eliminated){ b.wx=c.wx; b.laneIndex=c.laneIndex; }   // ride along — keep position synced to the carrier
         if(!c || c.eliminated || now>b.rideUntil){ dismount(b); }
-        continue; // carried; immune; position resolved at draw
+        continue;
       }
-      if(b.deadAt){ if(now-b.deadAt>600) spawnBird(b,false); continue; }
+      if(b.deadAt){ if(now-b.deadAt>600){ spawnBird(b,false);
+        if(AI_ON && b.checkpoint!=null && b.checkpoint<b.laneIndex){ b.laneIndex=b.checkpoint; b.vly=b.checkpoint; } }   // demo bots resume from their last safe row, not the start
+        continue; }
       const band=G.rows[b.laneIndex];
-      if(band.kind==='water'){ let on=null; for(const e of band.ents){ if(Math.abs(b.wx-e.x)<e.w/2-8){ on=e; break; } }
-        if(on){ b.wx+=band.dir*band.speed*G.levelMult*dt; if(b.wx<10||b.wx>WORLD_W-10) die(b); } else if(now>=b.invulnUntil) die(b); }
-      else if(band.kind==='road'){ if(now>=b.invulnUntil){ for(const e of band.ents){ if(Math.abs(b.wx-e.x)<e.w/2+PLAYER_HALF*0.5){ die(b); break; } } } }
+      if(band.kind==='safe' && Math.abs(b.vly-b.laneIndex)<0.35 && b.laneIndex<(b.checkpoint==null?1e9:b.checkpoint)) b.checkpoint=b.laneIndex;   // reaching a higher safe row banks a checkpoint
+      collectRocket(b);   // grab the rocket if we're sitting on it (road / log)
+      // Collisions use the VISUAL position and only count once the bird has actually hopped into the
+      // lane and onto the spot — so you die on true contact, not the instant you press a direction.
+      const settled = Math.abs(b.vly - b.laneIndex) < 0.35;
+      if(band.kind==='water'){ let on=null; for(const e of band.ents){ if(Math.abs(b.vx-e.x) < e.w/2 + 8){ on=e; break; } }   // forgiving: landing on the log's edge still counts as standing on it
+        if(on){ b.wx+=band.dir*band.speed*G.levelMult*dt; if(b.wx < -GROUND_EXT+6 || b.wx > WORLD_W+GROUND_EXT-6) die(b); }   // only die riding off the visible edge
+        else if(settled && now>=b.invulnUntil) die(b); }
+      else if(band.kind==='road'){ if(settled && now>=b.invulnUntil){ for(const e of band.ents){ if(Math.abs(b.vx-e.x) < e.w*0.44 + 7){ die(b); break; } } } }
     }
   }
 
@@ -265,14 +399,17 @@
     const b=G.birds.get(id); if(!b) return;
     if(type==='hop') playerHop(b,p.dir);
     else if(type==='ride') dismount(b);
+    else if(type==='rocket'){ if(b.hasRocket && !clearing()){ b.hasRocket=false; rocketLaunch(b); } }
   }
 
   // ---- networking ----
   socket.on('connect',()=>socket.emit('host:hello',{code:ROOM||null}));
   socket.on('host:roster',(arr)=>{ roster.clear(); arr.forEach(p=>roster.set(p.id,{...p,type:p.type||'duck'})); renderLobby(); broadcast(true); });
-  socket.on('host:playerJoined',(p)=>{ const ex=roster.get(p.id); roster.set(p.id,{...p,connected:true,type:(ex&&ex.type)||'duck'}); renderLobby(); broadcast(true); });
+  socket.on('host:playerJoined',(p)=>{ const ex=roster.get(p.id); roster.set(p.id,{...p,connected:true,type:(ex&&ex.type)||'duck'});
+    if(G){ const b=G.birds.get(p.id); if(b) b.connected=true; }   // restore the bird's connected flag on (re)join
+    renderLobby(); broadcast(true); });
   socket.on('host:playerLeft',({id})=>{ const r=roster.get(id); if(r) r.connected=false; if(G){ const b=G.birds.get(id); if(b){ b.connected=false; } } renderLobby();
-    if(phase==='playing' && G){ const alive=[...G.birds.values()].filter(b=>!b.eliminated&&b.connected); if(G.started>=2 && alive.length<=1) checkEnd(); } broadcast(true); });
+    if(phase==='playing' && G) checkEnd(); broadcast(true); });   // ends only if no connected, still-alive birds remain
   socket.on('host:input',({id,type,payload})=>applyInput(id,type,payload||{}));
 
   function broadcast(force){ const now=performance.now(); if(!force && now-lastBroadcast<80) return; lastBroadcast=now;
@@ -280,7 +417,7 @@
       players:[...roster.values()].map(p=>({id:p.id,name:p.name,color:p.color,type:p.type,score:0,lives:3,alive:true,connected:p.connected})) }); return; }
     socket.emit('host:state',{ game:'frogger', phase, level:G.level, winner,
       players:[...G.birds.values()].map(b=>({ id:b.id,name:b.name,color:b.color,type:b.type,score:b.score,lives:b.lives,alive:!b.eliminated,connected:b.connected,
-        riding:!!b.riderOf, ridingName:b.riderOf?((G.birds.get(b.riderOf)||{}).name||''):null, carrying:!!b.carrying,
+        riding:!!b.riderOf, ridingName:b.riderOf?((G.birds.get(b.riderOf)||{}).name||''):null, carrying:!!b.carrying, rocket:!!b.hasRocket,
         rideLeft:b.riderOf?Math.max(0,Math.ceil((b.rideUntil-now)/1000)):0 })) });
   }
 
@@ -310,7 +447,7 @@
     else { list.innerHTML=''; ps.forEach(p=>{ const el=document.createElement('div'); el.className='pill'+(p.connected?'':' off');
       el.innerHTML='<i style="background:'+p.color+';color:'+p.color+'"></i>'+p.name+' <span style="font-size:13px;color:#bfe7cf;font-weight:700">'+(p.type||'duck')+'</span>'; list.appendChild(el); }); }
     const conn=ps.filter(p=>p.connected).length;
-    $('startcue').textContent = conn>=2 ? 'First player: tap START on your phone ⟶' : (conn===1?'Need one more fowl…':'');
+    $('startcue').textContent = conn>=1 ? 'First player: tap START on your phone ⟶' : '';   // solo is allowed
     if(phase==='lobby') showOverlay('lobby');
   }
 
@@ -344,6 +481,25 @@
   function mBike(cx,cy,dir,color){ const dk='#1d1d24'; box(cx-dir*15,cy,4,8,15,24,dk); box(cx+dir*15,cy,4,8,15,24,dk);
     box(cx,cy,21,28,5,5,color); box(cx,cy,8,5,5,16,color); box(cx+dir*14,cy,10,5,5,20,color); box(cx+dir*14,cy,32,15,5,4,dk); box(cx-dir*4,cy,28,9,8,5,dk); box(cx,cy,30,11,11,17,'#7aa7ff'); box(cx,cy,48,11,11,11,'#ffd9b0'); }
   function mFish(cx,cy,color){ box(cx,cy,6,20,12,11,color); poly([v3(cx+11,cy-7,6),v3(cx+20,cy-9,6),v3(cx+20,cy-9,18),v3(cx+11,cy-7,18)],shade(color,-20)); box(cx-7,cy,16,5,5,4,'#fff'); }
+  function mRocket(cx,cy){ const [sx,sy]=v3(cx,cy,6); const t=performance.now()/1000, bob=Math.sin(t*4)*3*S, x=sx, y=sy-30*S+bob;
+    const gl=ctx.createRadialGradient(x,y,2,x,y,32*S); gl.addColorStop(0,'rgba(255,225,120,.6)'); gl.addColorStop(1,'rgba(255,225,120,0)'); ctx.fillStyle=gl; ctx.beginPath(); ctx.arc(x,y,32*S,0,7); ctx.fill();
+    ctx.save(); ctx.translate(x,y); ctx.scale(S,S);
+    ctx.fillStyle='#eef2ff'; ctx.beginPath(); ctx.moveTo(-7,7); ctx.lineTo(-7,-7); ctx.quadraticCurveTo(0,-23,7,-7); ctx.lineTo(7,7); ctx.closePath(); ctx.fill();   // body
+    ctx.fillStyle='#ff5c49'; ctx.beginPath(); ctx.moveTo(-7,-7); ctx.quadraticCurveTo(0,-23,7,-7); ctx.closePath(); ctx.fill();   // nose
+    ctx.fillStyle='#3aa0e0'; ctx.beginPath(); ctx.arc(0,-3,3.4,0,7); ctx.fill();   // window
+    ctx.fillStyle='#ff5c49'; ctx.beginPath(); ctx.moveTo(-7,3); ctx.lineTo(-13,10); ctx.lineTo(-7,8); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(7,3); ctx.lineTo(13,10); ctx.lineTo(7,8); ctx.closePath(); ctx.fill();   // fins
+    const fl=7+Math.sin(t*30)*4; ctx.fillStyle='#ffd166'; ctx.beginPath(); ctx.moveTo(-4,8); ctx.lineTo(0,8+fl); ctx.lineTo(4,8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#ff8a3c'; ctx.beginPath(); ctx.moveTo(-2.4,8); ctx.lineTo(0,8+fl*0.6); ctx.lineTo(2.4,8); ctx.closePath(); ctx.fill();   // flame
+    ctx.restore(); }
+
+  function mFlyingRocket(cx,cy,z){ const [sx,sy]=v3(cx,cy,z); const t=performance.now()/1000;
+    for(let i=7;i>=1;i--){ const yy=sy + i*7*S + Math.sin(t*40+i)*2*S, rr=(2.5+i*1.7)*S*(1+Math.sin(t*30+i)*0.18);
+      ctx.fillStyle = i>3 ? 'rgba(255,130,55,'+(0.45*(8-i)/7)+')' : 'rgba(255,214,90,'+(0.55*(4-i)/4+0.25)+')';
+      ctx.beginPath(); ctx.arc(sx,yy,rr,0,7); ctx.fill(); }
+    ctx.fillStyle='#fff6c0'; ctx.beginPath(); ctx.arc(sx,sy+7*S,3.4*S,0,7); ctx.fill();                 // bright core
+    ctx.fillStyle='#c7ccd6'; const [nx,ny]=v3(cx,cy,z); ctx.fillRect(nx-5*S,ny-2*S,10*S,7*S);            // little metal nozzle under the bird
+    for(let k=0;k<3;k++){ const a=t*8+k*2.1, dx=Math.cos(a)*16*S, dy=Math.sin(a)*9*S; ctx.fillStyle='rgba(255,255,255,.8)'; ctx.beginPath(); ctx.arc(sx+dx,sy-10*S+dy,1.6*S,0,7); ctx.fill(); } }   // sparkle
 
   // ---- ground ----
   function drawGround(r){ const cx=WORLD_W/2, cy=r.wy;
@@ -360,16 +516,23 @@
     ctx.strokeText(b.name,sx,sy); ctx.fillStyle=b.color; ctx.fillText(b.name,sx,sy);
     if(b.riderOf){ const left=Math.max(0,Math.ceil((b.rideUntil-performance.now())/1000)); ctx.font="900 14px Inter, sans-serif"; ctx.fillStyle='#fff'; ctx.strokeText('🐤 '+left+'s',sx,sy-18); ctx.fillText('🐤 '+left+'s',sx,sy-18); } }
   function render(){ drawBackground(); const rows=(G?G.rows:bgRows); if(!rows) return;
+    updateCamera();
     for(let i=0;i<rows.length;i++) drawGround(rows[i]);
     const sprites=[];
     for(const r of rows){ if(r.ents) for(const e of r.ents) sprites.push({wy:r.wy,draw:()=>{ if(r.kind==='water') mLog(e.x,r.wy,e.w,e.color);
       else if(r.type==='bowling') mBowling(e.x,r.wy); else if(r.type==='skunk') mSkunk(e.x,r.wy,r.dir); else if(r.type==='moped') mMoped(e.x,r.wy,r.dir,e.color); else if(r.type==='bicycle') mBike(e.x,r.wy,r.dir,e.color); }});
       if(r.trees) for(const t of r.trees) sprites.push({wy:r.wy+18,draw:()=>mTree(t.x,r.wy)}); }
     if(G){ const slotW=WORLD_W/5; for(let i=0;i<5;i++) if(G.fish[i]) sprites.push({wy:rows[0].wy,draw:()=>mFish((i+0.5)*slotW,rows[0].wy,FISH_COLORS[i])});
-      for(const b of G.birds.values()){ if(b.eliminated) continue; let wx=b.wx, wy=rows[b.laneIndex].wy, z=b.hop*22, ride=false;
-        if(b.riderOf){ const c=G.birds.get(b.riderOf); if(c){ wx=c.wx; wy=rows[c.laneIndex].wy; z=c.hop*22+24; ride=true; } }
-        const blink=performance.now()<b.invulnUntil && b.invulnUntil<1e14 && Math.floor(performance.now()/100)%2===0;
-        sprites.push({wy:wy-(ride?2:0), draw:()=>{ if(!blink){ const [sx,sy]=v3(wx,wy,0.5); ctx.fillStyle='rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(sx,sy,20*S,9*S,0,0,7); ctx.fill(); drawBird(b.type,b.color,wx,wy,z); } nameTag(b,wx,wy,z); }}); } }
+      if(G.rocket && G.rocket.visible && rows[G.rocket.lane]){ const rk=G.rocket, ry=rows[rk.lane].wy; sprites.push({wy:ry+2,draw:()=>mRocket(rk.wx,ry)}); }
+      const laneWy=(l)=>(rows.length-1-l)*LANE_DEPTH, arc=(h)=>Math.sin((1-h)*Math.PI)*18;   // smooth up-and-over hop
+      for(const b of G.birds.values()){ if(b.eliminated) continue; if(b.vx==null){ b.vx=b.wx; b.vly=b.laneIndex; }
+        const flying=!!b.launch;
+        let wx=b.vx, wy=laneWy(b.vly), z=flying?(b.launchZ||0):arc(b.hop), ride=false;
+        if(b.riderOf){ const c=G.birds.get(b.riderOf); if(c){ wx=(c.vx==null?c.wx:c.vx); wy=laneWy(c.vly==null?c.laneIndex:c.vly); z=arc(c.hop)+24; ride=true; } }
+        const blink=!flying && performance.now()<b.invulnUntil && b.invulnUntil<1e14 && Math.floor(performance.now()/100)%2===0;
+        sprites.push({wy: flying ? -1e9 : wy-(ride?2:0), draw:()=>{
+          if(flying){ mFlyingRocket(wx,wy,z); drawBird(b.type,b.color,wx,wy,z); nameTag(b,wx,wy,z); return; }
+          if(!blink){ const [sx,sy]=v3(wx,wy,0.5); ctx.fillStyle='rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(sx,sy,20*S,9*S,0,0,7); ctx.fill(); drawBird(b.type,b.color,wx,wy,z); } nameTag(b,wx,wy,z); }}); } }
     sprites.sort((a,b)=>b.wy-a.wy); for(const s of sprites) s.draw();
     if(G) drawLeaderboard(); drawFlash();
   }
@@ -389,7 +552,89 @@
   window.addEventListener('keydown',e=>{ const d=KEY[e.key]; if(!d||phase!=='playing'||!G) return; e.preventDefault();
     const first=[...G.birds.values()].filter(b=>!b.eliminated)[0]; if(first) playerHop(first,d); });
 
-  function frame(ts){ const dt=Math.min(0.05,(frame._p?(ts-frame._p)/1000:0.016)); frame._p=ts; update(dt); render(); broadcast(false); requestAnimationFrame(frame); }
+  // ---- CPU / demo brains: birds that actually play (wait for gaps, ride logs, race for fish) ----
+  let AI_ON = new URLSearchParams(location.search).get('cpu') === '1';
+  let __aiTicks=0, __hops=0;
+  window.__ai = (on)=>{ AI_ON = (on !== false); return AI_ON; };
+  window.__launch = (slow)=>{ const b=[...G.birds.values()].find(x=>!x.eliminated&&!x.launch); if(!b) return 'none'; rocketLaunch(b); if(slow&&b.launch) b.launch.dur=3200; return b.name; };   // test: force a rocket flight (slow=longer for screenshots)
+  window.__jump = (n)=>{ if(!G) return 'no game'; G.level=Math.max(1,n|0); G.levelMult=1+(G.level-1)*0.15; G.rows=buildRows(G.level); G.fish=[false,false,false,false,false]; G.levelClearUntil=0; G.birds.forEach(b=>{ if(!b.eliminated){ b.hasRocket=false; spawnBird(b,true); } }); placeRocket(); flash('LEVEL '+G.level+'!','#ffd166'); SFX.level(); broadcast(true); return G.level; };   // demo: fast-forward to a level
+  window.__dbg = ()=> !G ? {lvl:0,phase,roster:roster.size,room:ROOM,conn:socket.connected,birds:[]} : { lvl:G.level, fish:G.fish.filter(Boolean).length, ai:AI_ON, phase, clearing:clearing(), rocket:G.rocket?{lane:G.rocket.lane,wx:Math.round(G.rocket.wx),vis:G.rocket.visible,col:G.rocket.collected}:null, ticks:__aiTicks, hops:__hops, birds:[...G.birds.values()].map(b=>{ const up=G.rows[b.laneIndex-1]; return { n:b.name, lane:b.laneIndex, kind:(G.rows[b.laneIndex]||{}).kind, rk:!!b.hasRocket, wx:Math.round(b.wx), sc:b.score, d:b.deaths||0, dead:!!b.deadAt }; }) };
+  function roadClear(lane, wx){
+    const v = lane.dir*lane.speed*G.levelMult;        // px/s
+    for(const e of lane.ents){
+      if(Math.abs(e.x-wx) < e.w/2 + 12) return false;                 // a car is on the landing spot
+      if(v!==0){ const t=(wx-e.x)/v; if(t>=0 && t<0.55) return false; } // a car will arrive very soon — take tighter gaps (deaths are cheap with checkpoints)
+    }
+    return true;
+  }
+  const logUnder=(lane,wx)=>{ for(const e of lane.ents) if(Math.abs(wx-e.x) < e.w/2 - 12) return true; return false; };
+  const nearestLogX=(lane,wx)=>{ let bx=null,bd=1e9; for(const e of lane.ents){ const d=Math.abs(e.x-wx); if(d<bd){bd=d;bx=e.x;} } return bx; };
+  // Will a log be under wx by the time we finish the hop into this lane? (logs drift, so aim where it WILL be.)
+  function logLanding(lane,wx){ const v=lane.dir*lane.speed*G.levelMult; for(const e of lane.ents) if(Math.abs((e.x+v*0.16)-wx) < e.w/2 - 10) return true; return false; }
+  // can a lane be safely occupied at x right now (accounting for where moving things will be)?
+  function safeAt(lane, x){
+    if(!lane) return false;
+    if(x<18 || x>WORLD_W-18){ if(lane.kind!=='water') return false; }
+    if(lane.kind==='safe' || lane.kind==='goal') return true;
+    if(lane.kind==='road') return roadClear(lane, x);
+    if(lane.kind==='water') return logLanding(lane, x);
+    return false;
+  }
+  function aiDecide(b){
+    const lanes=G.rows, N=lanes.length, cur=lanes[b.laneIndex];
+    const up = b.laneIndex>0 ? lanes[b.laneIndex-1] : null;
+    const down = b.laneIndex<N-1 ? lanes[b.laneIndex+1] : null;
+
+    // riding a log toward the edge -> bail up
+    if(cur.kind==='water' && (b.wx < -GROUND_EXT+95 || b.wx > WORLD_W+GROUND_EXT-95)){ if(up) playerHop(b,'up'); return; }
+
+    // reaching the goal: line up with an empty fish slot, then dart in
+    if(up && up.kind==='goal'){
+      const slotW=WORLD_W/5; let best=-1,bd=1e9;
+      for(let i=0;i<5;i++) if(!G.fish[i]){ const sx=(i+0.5)*slotW,d=Math.abs(b.wx-sx); if(d<bd){bd=d;best=i;} }
+      if(best<0){ playerHop(b,'up'); return; }
+      const sx=(best+0.5)*slotW;
+      if(Math.abs(b.wx-sx) < slotW*0.42) playerHop(b,'up'); else playerHop(b, sx>b.wx?'right':'left');
+      return;
+    }
+
+    // in danger right now (a car bearing down on my road lane / sitting in open water) -> escape
+    const danger = (cur.kind==='road' && !roadClear(cur,b.wx)) || (cur.kind==='water' && !logUnder(cur,b.wx));
+    if(danger){
+      if(safeAt(up, b.wx)){ playerHop(b,'up'); return; }
+      if(safeAt(down, b.wx)){ playerHop(b,'down'); return; }                 // retreat to safety
+      if(cur.kind==='road'){                                                  // dodge sideways into a gap
+        const L=roadClear(cur,b.wx-COL)&&b.wx-COL>24, R=roadClear(cur,b.wx+COL)&&b.wx+COL<WORLD_W-24;
+        if(L||R){ playerHop(b, (R&&(!L||Math.random()<0.5))?'right':'left'); return; }
+      }
+      if(up){ playerHop(b,'up'); return; }                                     // last resort: push forward
+      return;
+    }
+
+    // safe right now: push toward the goal whenever the lane ahead is good
+    if(!up) return;
+    if(up.kind==='safe'){ playerHop(b,'up'); return; }
+    if(up.kind==='road'){ if(roadClear(up,b.wx)) playerHop(b,'up'); return; }   // hold on safe ground for a gap; the danger check handles real threats
+    if(up.kind==='water'){
+      if(logLanding(up,b.wx)){ playerHop(b,'up'); return; }                      // a log will be under us as we land — hop on
+      const tx=nearestLogX(up,b.wx);                                            // else edge toward a nearby log lane so the next one sweeps over us
+      if(tx!=null && Math.abs(tx-b.wx) > COL*0.5 && Math.abs(tx-b.wx) < COL*2.4) playerHop(b, tx>b.wx?'right':'left');
+    }
+  }
+  function aiStep(now){
+    if(!AI_ON || !G || phase!=='playing' || clearing()) return;
+    __aiTicks++;
+    for(const b of G.birds.values()){
+      if(b.eliminated || b.deadAt || b.riderOf || b.launch) continue;
+      if(b.hasRocket){ b.hasRocket=false; rocketLaunch(b); continue; }                 // demo bots cash in a rocket immediately (no phone to tap)
+      if(Math.abs((b.vly==null?b.laneIndex:b.vly) - b.laneIndex) > 0.34) continue;   // still mid-hop
+      if(b.aiNext && now < b.aiNext) continue;
+      b.aiNext = now + 55 + Math.random()*95;                                         // quick, staggered reactions for the high-level pace
+      aiDecide(b);
+    }
+  }
+
+  function frame(ts){ const dt=Math.min(0.05,(frame._p?(ts-frame._p)/1000:0.016)); frame._p=ts; update(dt); aiStep(performance.now()); render(); broadcast(false); requestAnimationFrame(frame); }
   requestAnimationFrame(frame);
 })();
 </script>

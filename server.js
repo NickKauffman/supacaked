@@ -140,6 +140,7 @@ io.on('connection', (socket) => {
   socket.on('ctrl:fire', forward('fire'));          // Couch Cannons
   socket.on('ctrl:hop', forward('hop'));            // Fowl Crossing
   socket.on('ctrl:ride', forward('ride'));          // Fowl Crossing piggyback jump-off
+  socket.on('ctrl:rocket', forward('rocket'));      // Fowl Crossing rocket launch
   socket.on('ctrl:char', forward('char'));          // Fowl Crossing bird choice
   socket.on('ctrl:menu', forward('menu'));             // phone moves the menu cursor
   socket.on('ctrl:selectGame', forward('selectGame')); // phone confirms a game
