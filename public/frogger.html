@@ -310,6 +310,8 @@
       if(G.fish.every(f=>f)) nextLevel(); else spawnBird(b,true); }
     else die(b); }
   function die(b){ if(performance.now()<b.invulnUntil || b.deadAt) return;
+    if(performance.now()<b.shieldUntil){ b.shieldUntil=0; b.invulnUntil=performance.now()+700; SFX.shield(); flash(b.name+"'s shield saved them!",'#a78bfa'); return; }   // shield absorbs one hit
+    if(b.carryingEgg) dropEgg(b);   // knocked out carrying the egg — it drops back on the board
     // drop any rider on this bird's back — leave them right where we are, and they survive
     if(b.carrying){ const r=G.birds.get(b.carrying); if(r){ r.wx=b.wx; r.laneIndex=b.laneIndex; r.riderOf=null; r.rideUntil=0; r.invulnUntil=performance.now()+800; } b.carrying=null; }
     if(b.riderOf){ const c=G.birds.get(b.riderOf); if(c) c.carrying=null; b.riderOf=null; }
