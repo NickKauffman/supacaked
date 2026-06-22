@@ -52,6 +52,10 @@
   .card .play{ position:relative; z-index:1; margin-top:12px; align-self:flex-start; font-family:'Anton',sans-serif; letter-spacing:1px; background:#fff; color:#1a1320; padding:9px 18px; border-radius:11px; font-size:17px; }
   .cannons .glow{ background:linear-gradient(90deg,#ff5c49,#a855f7); } .cannons h2{ color:#ffd2c4; }
   .frog .glow{ background:linear-gradient(90deg,#34d399,#22d3ee); } .frog h2{ color:#b8f5d8; }
+  .ghost .glow{ background:linear-gradient(90deg,#6366f1,#22d3ee); } .ghost h2{ color:#cdd6ff; }
+  .beacon .glow{ background:linear-gradient(90deg,#38bdf8,#fbbf24); } .beacon h2{ color:#bfe9ff; }
+  .tandem .glow{ background:linear-gradient(90deg,#fb7185,#f59e0b); } .tandem h2{ color:#ffd9c2; }
+  .glade .glow{ background:linear-gradient(90deg,#7ddc8a,#7fd3f2); } .glade h2{ color:#bff7c8; }
   .card.hl{ transform:translateY(-6px) scale(1.02); border-color:#fff; box-shadow:0 0 0 4px rgba(255,255,255,.28), 0 20px 54px rgba(0,0,0,.55); }
   .soon{ opacity:.5; cursor:default; } .soon:hover{ transform:none; box-shadow:none; border-color:rgba(255,255,255,.10); }
   .soon .glow{ background:linear-gradient(90deg,#64748b,#334155); }
@@ -94,6 +98,34 @@
     <p>Dodge traffic, ride the logs, race for the fish. Hop on a buddy's back for a piggyback ride!</p>
     <span class="play">PLAY ▸</span>
   </a>
+  <a class="card ghost" data-game="poltergeist" href="/poltergeist">
+    <div class="glow"></div><div class="art">👻</div>
+    <div class="badge">2–8 players · 1–2 ghosts · hidden movement</div>
+    <h2>Poltergeist</h2>
+    <p>One player is the invisible ghost — only their phone knows where they are. Everyone else hunts it with flashlights. Don't get caught in the light.</p>
+    <span class="play">PLAY ▸</span>
+  </a>
+  <a class="card beacon" data-game="beacon" href="/beacon">
+    <div class="glow"></div><div class="art">🔦</div>
+    <div class="badge">2 players · co-op teamwork</div>
+    <h2>Beacon</h2>
+    <p>Two harbor pilots, one storm. One of you sees the hidden rocks on your phone; the other steers the ship blind. Talk each other home.</p>
+    <span class="play">PLAY ▸</span>
+  </a>
+  <a class="card tandem" data-game="tandem" href="/tandem">
+    <div class="glow"></div><div class="art">🦿</div>
+    <div class="badge">2 players · co-op teamwork</div>
+    <h2>Tandem</h2>
+    <p>You each control one leg of the same wobbly strider. Alternate to walk, sync to leap. Stay balanced and reach the flag together.</p>
+    <span class="play">PLAY ▸</span>
+  </a>
+  <a class="card glade" data-game="glade" href="/glade">
+    <div class="glow"></div><div class="art">🐸</div>
+    <div class="badge">1–8 players · co-op world builder</div>
+    <h2>The Glade</h2>
+    <p>Grow a living pond world together. Plant lily pads and the frogs hop in; raise a bridge or a beaver dam side by side. It saves itself and grows a little every time you visit.</p>
+    <span class="play">PLAY ▸</span>
+  </a>
   <div class="card soon">
     <div class="glow"></div><div class="art">🕹️</div>
     <div class="badge">coming soon</div>
@@ -116,7 +148,7 @@
   const socket = io();
 
   function leaderId(){ const c=[...roster.values()].filter(p=>p.connected).sort((a,b)=>a.id-b.id); return c[0]?c[0].id:null; }
-  function gameUrl(game){ const c='?room='+roomCode; return game==='cannons'?'/couch'+c : game==='frogger'?'/frogger'+c : '/'+c; }
+  function gameUrl(game){ const c='?room='+roomCode; return game==='cannons'?'/couch'+c : game==='frogger'?'/frogger'+c : game==='poltergeist'?'/poltergeist'+c : game==='beacon'?'/beacon'+c : game==='tandem'?'/tandem'+c : game==='glade'?'/glade'+c : '/'+c; }
 
   socket.on('connect', ()=> socket.emit('host:hello', { code: roomCode || null }));
   socket.on('host:room', ({ code, joinUrl })=>{
@@ -137,7 +169,7 @@
   highlightCard(0);
   socket.on('host:input', ({id,type,payload})=>{ if(id!==leaderId()) return;
     if(type==='menu'){ highlightCard(payload&&payload.index); return; }
-    if(type==='selectGame'){ const g=payload&&payload.game; if(g==='cannons'||g==='frogger') location.href=gameUrl(g); } });
+    if(type==='selectGame'){ const g=payload&&payload.game; if(g==='cannons'||g==='frogger'||g==='poltergeist'||g==='beacon'||g==='tandem'||g==='glade') location.href=gameUrl(g); } });
 
   function renderRoster(){
     const el=$('plist'), ps=[...roster.values()], lead=leaderId();

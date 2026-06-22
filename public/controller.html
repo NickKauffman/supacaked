@@ -172,6 +172,130 @@
   .birdpick .bp .lock { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:900; font-size:13px; color:#fff; }
   .birdpick .bp .lock small { font-size:11px; opacity:.85; }
 
+  /* ---------- Poltergeist controller ---------- */
+  #pgame { gap:14px; }
+  .prole { text-align:center; border-radius:16px; padding:12px; font-family:'Anton',sans-serif; font-size:24px; letter-spacing:1px; background:var(--panel); border:2px solid var(--panel-2); }
+  .prole.ghost { color:#7df9d0; border-color:#1f6f55; box-shadow:0 0 0 3px rgba(125,249,208,.18); }
+  .prole.hunter { color:#ffd27a; border-color:#7a5a1a; box-shadow:0 0 0 3px rgba(255,210,122,.16); }
+  .prole small { display:block; font-family:'Inter'; font-weight:700; font-size:12px; letter-spacing:1px; color:var(--muted); margin-top:4px; text-transform:none; }
+  .ghostwrap, .hunterwrap { display:none; flex-direction:column; gap:14px; flex:1; }
+  .ghostwrap.show, .hunterwrap.show { display:flex; }
+
+  #pmap { width:100%; aspect-ratio:16/10; border-radius:16px; background:#06060d; border:2px solid var(--panel-2); display:block; }
+  .pmeter, .haunt { background:var(--panel); border-radius:14px; padding:10px 14px; }
+  .plabel { font-size:12px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); font-weight:800; display:flex; justify-content:space-between; }
+  .pbar, .hbar { height:14px; border-radius:99px; background:var(--panel-2); overflow:hidden; margin-top:8px; }
+  .pbar i { display:block; height:100%; width:0%; background:linear-gradient(90deg,#22d3ee,#fbbf24,#ff5470); transition:width .1s linear; }
+  .hbar i { display:block; height:100%; width:0%; background:linear-gradient(90deg,#3a3550,#fbbf24,#ff5470); transition:width .12s linear; }
+  .hauntword { text-align:center; font-weight:900; letter-spacing:2px; margin-top:8px; font-size:15px; color:var(--muted); }
+
+  .pstick { position:relative; flex:1; min-height:34vh; border-radius:24px; touch-action:none; user-select:none;
+    background:radial-gradient(120% 100% at 50% 0%, color-mix(in srgb,#7df9d0 14%, var(--panel)), var(--panel)); border:2px solid var(--panel-2);
+    display:flex; align-items:center; justify-content:center; }
+  .pstick.live { border-color:#7df9d0; }
+  .pnub { position:absolute; width:74px; height:74px; border-radius:50%; background:radial-gradient(circle at 40% 35%, #d6fff2, #4fd6b0); box-shadow:0 6px 20px rgba(0,0,0,.5); pointer-events:none; }
+  .pstick .ph { position:absolute; bottom:12px; color:var(--muted); font-weight:800; font-size:13px; pointer-events:none; }
+
+  .aimpad { position:relative; flex:1; min-height:34vh; border-radius:50%; aspect-ratio:1/1; align-self:center; max-width:78vw; touch-action:none; user-select:none;
+    background:radial-gradient(circle at 50% 50%, color-mix(in srgb,#ffd27a 12%, var(--panel)), var(--panel)); border:2px solid var(--panel-2);
+    display:flex; align-items:center; justify-content:center; }
+  .aimpad.live { border-color:#ffd27a; }
+  .aimpad .core { position:absolute; width:18px; height:18px; border-radius:50%; background:#ffd27a; box-shadow:0 0 12px #ffd27a; }
+  .aimbeam { position:absolute; left:50%; top:50%; width:46%; height:18px; transform-origin:left center; pointer-events:none;
+    background:linear-gradient(90deg, rgba(255,224,150,.85), rgba(255,210,120,0)); border-radius:9px; }
+  .aimpad .ph { position:absolute; bottom:18px; color:var(--muted); font-weight:800; font-size:13px; pointer-events:none; text-align:center; width:80%; }
+
+  .pbtn { border:none; border-radius:16px; font-family:'Anton',sans-serif; letter-spacing:1px; font-size:24px; padding:18px; cursor:pointer; transition:transform .06s ease, filter .15s ease; }
+  .pbtn:active { transform:scale(.97); }
+  .pbtn:disabled { filter:grayscale(.6) brightness(.6); cursor:default; }
+  .pbtn.scare { color:#08231a; background:linear-gradient(135deg,#7df9d0,#22d3ee); }
+  .pbtn.flash { color:#2a1c00; background:linear-gradient(135deg,#fff1c4,#ffce5a,#ff9a3c); }
+  .phint { text-align:center; color:var(--muted); font-size:13px; min-height:18px; }
+
+  /* ---------- Beacon controller ---------- */
+  #bgame{ gap:14px; }
+  .brole{ text-align:center; border-radius:16px; padding:12px; font-family:'Anton',sans-serif; font-size:23px; letter-spacing:1px; background:var(--panel); border:2px solid var(--panel-2); }
+  .brole.helm{ color:#fbbf24; border-color:#7a5a1a; box-shadow:0 0 0 3px rgba(251,191,36,.16); }
+  .brole.radar{ color:#38bdf8; border-color:#1a4f6e; box-shadow:0 0 0 3px rgba(56,189,248,.16); }
+  .brole small{ display:block; font-family:'Inter'; font-weight:700; font-size:12px; letter-spacing:1px; color:var(--muted); margin-top:4px; text-transform:none; }
+  .helmwrap, .radarwrap{ display:none; flex-direction:column; gap:14px; flex:1; }
+  .helmwrap.show, .radarwrap.show{ display:flex; }
+  .bstat{ display:flex; gap:10px; }
+  .bstat .s{ flex:1; background:var(--panel); border-radius:14px; padding:10px 12px; text-align:center; }
+  .bstat .s .k{ font-size:11px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; font-weight:800; }
+  .bstat .s .v{ font-family:'Anton',sans-serif; font-size:24px; line-height:1; margin-top:4px; }
+  .bthrottle{ background:var(--panel); border-radius:16px; padding:14px 16px; }
+  .blab{ display:flex; justify-content:space-between; font-size:12px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:10px; }
+  input[type=range].thr{ -webkit-appearance:none; appearance:none; width:100%; height:36px; background:transparent; }
+  input[type=range].thr::-webkit-slider-runnable-track{ height:14px; border-radius:99px; background:linear-gradient(90deg,#134e5e,#38bdf8); }
+  .bturn{ display:flex; gap:12px; flex:1; }
+  .turnbtn{ flex:1; border:none; border-radius:18px; background:var(--panel-2); color:#fff; font-family:'Anton',sans-serif; font-size:22px; min-height:24vh; cursor:pointer; touch-action:none; transition:transform .06s ease; }
+  .turnbtn:active, .turnbtn.live{ background:color-mix(in srgb,#fbbf24 35%,var(--panel-2)); box-shadow:0 0 0 3px rgba(251,191,36,.35); }
+  #bradar{ width:100%; aspect-ratio:16/9; border-radius:16px; background:#03060f; border:2px solid var(--panel-2); display:block; touch-action:none; }
+
+  /* ---------- Tandem controller ---------- */
+  #tgame{ gap:14px; }
+  .trole{ text-align:center; border-radius:16px; padding:12px; font-family:'Anton',sans-serif; font-size:23px; letter-spacing:1px; background:var(--panel); border:2px solid var(--panel-2); }
+  .trole small{ display:block; font-family:'Inter'; font-weight:700; font-size:12px; letter-spacing:1px; color:var(--muted); margin-top:4px; text-transform:none; }
+  .tstat{ display:flex; gap:10px; }
+  .tstat .s{ flex:1; background:var(--panel); border-radius:14px; padding:8px 12px; text-align:center; }
+  .tstat .s .k{ font-size:11px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; font-weight:800; }
+  .tstat .s .v{ font-family:'Anton',sans-serif; font-size:21px; line-height:1; margin-top:3px; }
+  .tbalance{ background:var(--panel); border-radius:14px; padding:10px 14px; }
+  .tbar{ position:relative; height:16px; border-radius:99px; background:var(--panel-2); margin-top:10px; }
+  .tbar .mid{ position:absolute; left:50%; top:-3px; width:2px; height:22px; background:rgba(255,255,255,.3); }
+  .tbar .nub{ position:absolute; top:-2px; width:20px; height:20px; border-radius:50%; background:#34d399; transform:translateX(-50%); transition:left .08s linear, background .1s; }
+  .tstep{ flex:1; border:none; border-radius:24px; font-family:'Anton',sans-serif; letter-spacing:1px; font-size:34px; color:#fff; cursor:pointer; touch-action:none; min-height:28vh;
+    background:radial-gradient(120% 100% at 50% 0%, color-mix(in srgb,var(--me) 30%,var(--panel)), var(--panel)); border:3px solid var(--panel-2); transition:transform .05s ease, box-shadow .1s ease; }
+  .tstep:active{ transform:scale(.98); }
+  .tstep.go{ border-color:#fff; box-shadow:0 0 0 4px color-mix(in srgb,var(--me) 55%, transparent); }
+  .tstep:disabled{ opacity:.4; }
+  .tjump{ border:none; border-radius:18px; font-family:'Anton',sans-serif; letter-spacing:1px; font-size:22px; padding:18px; color:#06231a; background:linear-gradient(135deg,#7dd3fc,#38bdf8); cursor:pointer; }
+  .tjump:active{ transform:scale(.98); }
+  .tjump:disabled{ opacity:.4; }
+
+  /* ---------- The Glade controller ---------- */
+  #ggame{ gap:10px; }
+  .grole{ display:flex; align-items:center; gap:10px; background:var(--panel); border:2px solid var(--panel-2); border-radius:14px; padding:10px 14px; }
+  .grole .gav{ font-size:26px; }
+  .grole .gtxt{ font-family:'Anton',sans-serif; font-size:18px; line-height:1; }
+  .grole .gtxt small{ display:block; font-family:'Inter'; font-weight:700; font-size:11px; color:var(--muted); margin-top:3px; text-transform:none; letter-spacing:0; }
+  .gstat{ margin-left:auto; text-align:right; }
+  .gstat .dew{ font-family:'Anton',sans-serif; font-size:22px; color:#ffd98a; }
+  .gstat .disc{ font-size:11px; color:var(--muted); font-weight:800; }
+  .gwish{ background:var(--panel); border:2px solid var(--panel-2); border-radius:12px; padding:8px 12px; display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; }
+  .gwish .gi{ font-size:18px; } .gwish span#gWishText{ flex:1; } .gwish .gp{ font-family:'Anton',sans-serif; color:#7ddc8a; font-size:15px; }
+  .gtabs{ display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; padding-bottom:2px; }
+  .gtabs::-webkit-scrollbar{ display:none; }
+  .gtab{ flex:0 0 auto; border:none; background:var(--panel); color:var(--muted); font-weight:800; font-size:12px; letter-spacing:1px; text-transform:uppercase; padding:8px 12px; border-radius:999px; cursor:pointer; }
+  .gtab.sel{ background:var(--me); color:#06281a; }
+  .gtab.disc{ background:color-mix(in srgb, #ffd98a 28%, var(--panel)); color:#ffe6ad; }
+  .gtab.disc.sel{ background:#ffd98a; color:#3a2a10; }
+  .gcell.shop .cost{ font-size:11px; }
+  .gnone{ grid-column:1/-1; text-align:center; color:var(--muted); font-weight:800; padding:22px 8px; }
+  .gitems{ display:grid; grid-template-columns:repeat(5,1fr); gap:8px; max-height:30vh; overflow-y:auto; padding:2px; }
+  .gcell{ position:relative; aspect-ratio:1/1; border-radius:12px; border:2px solid var(--panel-2); background:var(--panel); display:flex; align-items:center; justify-content:center; font-size:26px; cursor:pointer; }
+  .gcell.sel{ border-color:#fff; box-shadow:0 0 0 3px color-mix(in srgb, var(--me) 45%, transparent); }
+  .gcell .cost{ position:absolute; bottom:-2px; right:2px; font-size:10px; font-weight:900; color:#ffd98a; background:rgba(0,0,0,.5); padding:0 4px; border-radius:6px; }
+  .gcell .lab{ position:absolute; top:1px; left:0; right:0; text-align:center; font-size:8px; color:var(--muted); font-weight:800; overflow:hidden; white-space:nowrap; }
+  .gcell.locked{ opacity:.4; } .gcell.locked::after{ content:'🔒'; position:absolute; font-size:15px; }
+  .gcell.poor{ opacity:.55; }
+  .gcell .sw{ width:62%; height:62%; border-radius:8px; }
+  .ghold{ text-align:center; font-size:12px; color:var(--muted); font-weight:700; min-height:16px; }
+  .gctrls{ display:flex; gap:12px; align-items:stretch; margin-top:2px; }
+  .gstick{ position:relative; flex:1; min-height:24vh; border-radius:24px; touch-action:none; user-select:none;
+    background:radial-gradient(120% 100% at 50% 0%, color-mix(in srgb,#7ddc8a 16%, var(--panel)), var(--panel)); border:2px solid var(--panel-2);
+    display:flex; align-items:center; justify-content:center; }
+  .gstick.live{ border-color:var(--me); }
+  .gnub{ position:absolute; width:66px; height:66px; border-radius:50%; background:radial-gradient(circle at 40% 35%, #d9ffe6, #6fd39a); box-shadow:0 6px 18px rgba(0,0,0,.5); pointer-events:none; }
+  .gstick .gh{ position:absolute; bottom:10px; color:var(--muted); font-weight:800; font-size:12px; pointer-events:none; }
+  .gbtns{ flex:0 0 122px; display:flex; flex-direction:column; gap:10px; }
+  .gbtn{ flex:1; border:none; border-radius:18px; font-family:'Anton',sans-serif; letter-spacing:1px; font-size:20px; color:#06281a; cursor:pointer; touch-action:none; transition:transform .05s ease; }
+  .gbtn.place{ background:linear-gradient(135deg,#bff7c8,#7ddc8a); }
+  .gbtn.tend{ background:linear-gradient(135deg,#ffe89a,#ffd98a); }
+  .gbtn.erase{ flex:0 0 50px; background:var(--panel-2); color:#ffb4b4; font-size:15px; }
+  .gbtn:active{ transform:scale(.96); }
+
   .homelink{ position:fixed; top:8px; left:8px; z-index:50; color:#f4f1fb; text-decoration:none; font-weight:900; font-size:12px; background:rgba(0,0,0,.4); padding:6px 11px; border-radius:9px; }
   .homelink:active{ background:rgba(0,0,0,.7); }
 
@@ -184,6 +308,10 @@
   .gtile .gart{ font-size:44px; }
   .gtile.cannons{ background:linear-gradient(120deg,#ff5c49,#a855f7); }
   .gtile.frog{ background:linear-gradient(120deg,#34d399,#22d3ee); color:#06231a; }
+  .gtile.ghost{ background:linear-gradient(120deg,#6366f1,#22d3ee); }
+  .gtile.beacon{ background:linear-gradient(120deg,#38bdf8,#fbbf24); color:#04222e; }
+  .gtile.tandem{ background:linear-gradient(120deg,#fb7185,#f59e0b); }
+  .gtile.glade{ background:linear-gradient(120deg,#7ddc8a,#7fd3f2); color:#06281a; }
   .gtile{ opacity:.5; border:3px solid transparent; }
   .gtile.sel{ opacity:1; border-color:#fff; box-shadow:0 0 0 4px rgba(255,255,255,.18), 0 10px 30px rgba(0,0,0,.5); transform:scale(1.02); }
   .menubar{ display:flex; align-items:stretch; gap:12px; }
@@ -222,6 +350,10 @@
   <div class="menuwrap" id="menuWrap">
     <div class="gtile cannons" data-game="cannons" data-idx="0"><span class="gart">🎯</span><span class="gname">Couch Cannons</span></div>
     <div class="gtile frog" data-game="frogger" data-idx="1"><span class="gart">🦆</span><span class="gname">Fowl Crossing</span></div>
+    <div class="gtile ghost" data-game="poltergeist" data-idx="2"><span class="gart">👻</span><span class="gname">Poltergeist</span></div>
+    <div class="gtile beacon" data-game="beacon" data-idx="3"><span class="gart">🔦</span><span class="gname">Beacon</span></div>
+    <div class="gtile tandem" data-game="tandem" data-idx="4"><span class="gart">🦿</span><span class="gname">Tandem</span></div>
+    <div class="gtile glade" data-game="glade" data-idx="5"><span class="gart">🐸</span><span class="gname">The Glade</span></div>
   </div>
   <div class="menubar">
     <button class="navbtn" id="menuLeft">◀</button>
@@ -306,6 +438,95 @@
   <div class="hint" id="hint">Waiting for your turn…</div>
 </section>
 
+<!-- POLTERGEIST -->
+<section id="pgame" class="screen">
+  <div class="prole" id="pRole">—</div>
+
+  <!-- GHOST view -->
+  <div class="ghostwrap" id="ghostWrap">
+    <canvas id="pmap" width="384" height="240"></canvas>
+    <div class="pmeter"><div class="plabel"><span>Exposure</span><span id="pExpVal">0%</span></div><div class="pbar"><i id="pExpFill"></i></div></div>
+    <div class="pstick" id="pStick"><div class="pnub" id="pNub"></div><div class="ph">drag to drift through the dark</div></div>
+    <button class="pbtn scare" id="scareBtn">😱 SCARE</button>
+  </div>
+
+  <!-- HUNTER view -->
+  <div class="hunterwrap" id="hunterWrap">
+    <div class="haunt"><div class="plabel"><span>Haunt-o-meter</span></div><div class="hbar"><i id="hauntFill"></i></div><div class="hauntword" id="hauntWord">cold…</div></div>
+    <div class="aimpad" id="aimPad"><div class="aimbeam" id="aimBeam"></div><div class="core"></div><div class="ph">drag to sweep your flashlight</div></div>
+    <button class="pbtn flash" id="flashBtn">🔦 FLASH</button>
+  </div>
+
+  <div class="phint" id="pHint"></div>
+  <button id="pAgainBtn" class="btn" style="display:none">PLAY AGAIN</button>
+</section>
+
+<!-- BEACON -->
+<section id="bgame" class="screen">
+  <div class="brole" id="bRole">—</div>
+  <div class="bstat">
+    <div class="s"><div class="k">Delivered</div><div class="v" id="bDeliv">0</div></div>
+    <div class="s"><div class="k">Lives</div><div class="v" id="bLives">❤❤❤</div></div>
+    <div class="s"><div class="k">Time</div><div class="v" id="bTime">0s</div></div>
+  </div>
+  <!-- HELM: steer blind -->
+  <div class="helmwrap" id="helmWrap">
+    <div class="bthrottle">
+      <div class="blab"><span>Throttle</span><span><span id="bThrVal">35</span>%</span></div>
+      <input id="bThrottle" class="thr" type="range" min="0" max="100" value="35" />
+    </div>
+    <div class="bturn">
+      <button class="turnbtn" id="bPort">◀ PORT</button>
+      <button class="turnbtn" id="bStar">STBD ▶</button>
+    </div>
+  </div>
+  <!-- RADAR: sees the rocks -->
+  <div class="radarwrap" id="radarWrap">
+    <canvas id="bradar" width="384" height="216"></canvas>
+  </div>
+  <div class="phint" id="bHint"></div>
+  <button id="bAgainBtn" class="btn" style="display:none">PLAY AGAIN</button>
+</section>
+
+<!-- TANDEM -->
+<section id="tgame" class="screen">
+  <div class="trole" id="tRole">—</div>
+  <div class="tstat">
+    <div class="s"><div class="k">Stage</div><div class="v" id="tStage">1</div></div>
+    <div class="s"><div class="k">Hearts</div><div class="v" id="tHearts">❤ 0</div></div>
+    <div class="s"><div class="k">Time</div><div class="v" id="tTime">0s</div></div>
+  </div>
+  <div class="tbalance">
+    <div class="blab"><span>Balance</span><span id="tBalWord">steady</span></div>
+    <div class="tbar"><div class="mid"></div><div class="nub" id="tNub" style="left:50%"></div></div>
+  </div>
+  <button class="tstep" id="tStep">STEP</button>
+  <button class="tjump" id="tJump">🦋 JUMP — both together!</button>
+  <div class="phint" id="tHint"></div>
+  <button id="tAgainBtn" class="btn" style="display:none">PLAY AGAIN</button>
+</section>
+
+<!-- THE GLADE -->
+<section id="ggame" class="screen">
+  <div class="grole">
+    <span class="gav" id="gAv">🐸</span>
+    <span class="gtxt">THE GLADE<small id="gRoleSub">Wander, build & tend your pond world together.</small></span>
+    <span class="gstat"><div class="dew" id="gDew">💧 0</div><div class="disc" id="gDisc">0 discoveries</div></span>
+  </div>
+  <div class="gwish" id="gWish" style="display:none"><span class="gi" id="gWishIcon">🪷</span><span id="gWishText">—</span><span class="gp" id="gWishProg">0/0</span></div>
+  <div class="gtabs" id="gTabs"></div>
+  <div class="gitems" id="gItems"></div>
+  <div class="ghold" id="gHoldLbl">Holding: 🪷 Lily pad</div>
+  <div class="gctrls">
+    <div class="gstick" id="gStick"><div class="gnub" id="gNub"></div><div class="gh">drag to walk your critter</div></div>
+    <div class="gbtns">
+      <button class="gbtn place" id="gPlace">PLANT</button>
+      <button class="gbtn tend" id="gTend">TEND</button>
+      <button class="gbtn erase" id="gErase">✕</button>
+    </div>
+  </div>
+</section>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 (function () {
@@ -382,7 +603,7 @@
   socket.on('connect', () => { if (me && roomCode) socket.emit('ctrl:join', { name: me.name, token, code: roomCode }); });
 
   // ---------- MENU (arrows + ENTER; only the leader can drive) ----------
-  const GAMES = ['cannons', 'frogger'];
+  const GAMES = ['cannons', 'frogger', 'poltergeist', 'beacon', 'tandem', 'glade'];
   let menuIdx = 0, menuLeader = false;
   function renderMenuSel() { document.querySelectorAll('#menu .gtile').forEach((t, i) => t.classList.toggle('sel', i === menuIdx)); }
   function moveMenu(dir) { if (!menuLeader) return; menuIdx = (menuIdx + dir + GAMES.length) % GAMES.length; renderMenuSel(); socket.emit('ctrl:menu', { index: menuIdx }); }
@@ -573,11 +794,353 @@
     else $('fAgainBtn').style.display='none';
   }
 
+  // ---------- POLTERGEIST ----------
+  let pPriv = null;        // the ghost's private tactical map (server sends this only to the ghost's phone)
+  let pLastVibe = 0;
+  socket.on('ctrl:priv', (d) => {
+    if (lastState && lastState.game === 'beacon') { bPriv = d; drawBradar(); }
+    else { pPriv = d; drawPmap(); }
+  });
+
+  // Ghost: analog joystick → normalized move vector.
+  (function setupStick(){
+    const pad = $('pStick'), nub = $('pNub');
+    let active=false, cx=0, cy=0, R=1, lastSend=0;
+    function center(){ const r=pad.getBoundingClientRect(); cx=r.left+r.width/2; cy=r.top+r.height/2; R=Math.min(r.width,r.height)*0.34; }
+    function setNub(vx,vy){ nub.style.transform = `translate(${vx*R}px,${vy*R}px)`; }
+    function send(vx,vy,force){ const now=Date.now(); if(!force && now-lastSend<50) return; lastSend=now; socket.emit('ctrl:gmove',{vx,vy}); }
+    const move=e=>{ if(!active) return; let dx=(e.clientX-cx)/R, dy=(e.clientY-cy)/R; const m=Math.hypot(dx,dy); if(m>1){dx/=m;dy/=m;} setNub(dx,dy); send(dx,dy,false); };
+    const down=e=>{ e.preventDefault(); center(); active=true; pad.classList.add('live'); move(e); };
+    const up=()=>{ if(!active) return; active=false; pad.classList.remove('live'); setNub(0,0); send(0,0,true); };
+    pad.addEventListener('pointerdown',down); pad.addEventListener('pointermove',move);
+    pad.addEventListener('pointerup',up); pad.addEventListener('pointercancel',up); pad.addEventListener('pointerleave',up);
+  })();
+  $('scareBtn').addEventListener('click', ()=> socket.emit('ctrl:gscare'));
+
+  // Hunter: drag a dial → absolute beam angle (same atan2 convention the TV uses).
+  (function setupAim(){
+    const pad = $('aimPad'), beam = $('aimBeam');
+    let active=false, cx=0, cy=0, lastSend=0, cur=0;
+    function center(){ const r=pad.getBoundingClientRect(); cx=r.left+r.width/2; cy=r.top+r.height/2; }
+    function showBeam(a){ beam.style.transform = `translateY(-50%) rotate(${a}rad)`; }
+    const move=e=>{ if(!active) return; cur=Math.atan2(e.clientY-cy, e.clientX-cx); showBeam(cur);
+      const now=Date.now(); if(now-lastSend<50) return; lastSend=now; socket.emit('ctrl:haim',{aim:cur}); };
+    const down=e=>{ e.preventDefault(); center(); active=true; pad.classList.add('live'); move(e); };
+    const up=()=>{ if(!active) return; active=false; pad.classList.remove('live'); socket.emit('ctrl:haim',{aim:cur}); };
+    pad.addEventListener('pointerdown',down); pad.addEventListener('pointermove',move);
+    pad.addEventListener('pointerup',up); pad.addEventListener('pointercancel',up); pad.addEventListener('pointerleave',up);
+    window.__setAimVisual = (a, ifIdle) => { if(ifIdle && active) return; cur=a; showBeam(a); };
+  })();
+  $('flashBtn').addEventListener('click', ()=> socket.emit('ctrl:hflash'));
+  $('pAgainBtn').addEventListener('click', ()=> socket.emit('ctrl:rematch'));
+
+  function drawPmap(){
+    const cvs=$('pmap'); if(!cvs) return; const g=cvs.getContext('2d'), CW=cvs.width, CH=cvs.height;
+    g.clearRect(0,0,CW,CH); g.fillStyle='#06060d'; g.fillRect(0,0,CW,CH);
+    if(!pPriv || !pPriv.arena) return;
+    const A=pPriv.arena, aw=A.x1-A.x0, ah=A.y1-A.y0, pad=8;
+    const sc=Math.min((CW-pad*2)/aw,(CH-pad*2)/ah), ox=(CW-aw*sc)/2, oy=(CH-ah*sc)/2;
+    const TX=x=>ox+(x-A.x0)*sc, TY=y=>oy+(y-A.y0)*sc;
+    g.strokeStyle='rgba(99,102,241,0.55)'; g.lineWidth=2; g.strokeRect(ox,oy,aw*sc,ah*sc);
+    for(const c of pPriv.cones||[]){ if(c.stunned) continue;
+      g.save(); g.globalCompositeOperation='lighter';
+      const ccx=TX(c.x), ccy=TY(c.y), reach=c.reach*sc;
+      const grd=g.createRadialGradient(ccx,ccy,3,ccx,ccy,reach);
+      grd.addColorStop(0,'rgba(255,236,180,0.55)'); grd.addColorStop(1,'rgba(255,210,120,0)');
+      g.fillStyle=grd; g.beginPath(); g.moveTo(ccx,ccy); g.arc(ccx,ccy,reach,c.aim-c.half,c.aim+c.half); g.closePath(); g.fill(); g.restore();
+    }
+    for(const f of pPriv.furniture||[]){ g.fillStyle='#0c0b16'; g.fillRect(TX(f.x),TY(f.y),f.w*sc,f.h*sc);
+      g.strokeStyle='rgba(150,140,200,0.4)'; g.lineWidth=1; g.strokeRect(TX(f.x),TY(f.y),f.w*sc,f.h*sc); }
+    for(const c of pPriv.cones||[]){ g.fillStyle=c.stunned?'#5a4a60':c.color; g.beginPath(); g.arc(TX(c.x),TY(c.y),4,0,7); g.fill(); }
+    for(const al of pPriv.allies||[]){ g.save(); g.globalCompositeOperation='lighter';
+      const ax=TX(al.x), ay=TY(al.y), ag=g.createRadialGradient(ax,ay,1,ax,ay,12);
+      ag.addColorStop(0,'rgba(180,190,255,0.7)'); ag.addColorStop(1,'rgba(120,120,200,0)');
+      g.fillStyle=ag; g.beginPath(); g.arc(ax,ay,12,0,7); g.fill(); g.restore(); }
+    const gx=TX(pPriv.gx), gy=TY(pPriv.gy);
+    g.save(); g.globalCompositeOperation='lighter';
+    const gg=g.createRadialGradient(gx,gy,1,gx,gy,15); gg.addColorStop(0,'rgba(170,255,230,0.95)'); gg.addColorStop(1,'rgba(120,200,255,0)');
+    g.fillStyle=gg; g.beginPath(); g.arc(gx,gy,15,0,7); g.fill(); g.restore();
+    g.fillStyle='#e9fff7'; g.beginPath(); g.arc(gx,gy,5,0,7); g.fill();
+  }
+
+  function poltergeistState(state){
+    if(state.phase==='lobby'){ show('lobby'); $('birdpick').classList.remove('show'); updateStartBtn(); return; }
+    show('pgame');
+    const iAmGhost = (state.ghostIds||[]).includes(me.id);
+    const myGhost = (state.ghosts||[]).find(g=>g.id===me.id);
+    $('ghostWrap').classList.toggle('show', iAmGhost);
+    $('hunterWrap').classList.toggle('show', !iAmGhost);
+    const role=$('pRole');
+    if(iAmGhost){ role.className='prole ghost';
+      const allies=(state.ghosts||[]).filter(g=>g.id!==me.id).map(g=>g.name);
+      role.innerHTML='👻 YOU ARE A GHOST<small>'+(allies.length?'Haunting with '+allies.join(' & ')+'. ':'')+'Stay in the dark, survive the timer.</small>'; }
+    else { role.className='prole hunter';
+      const gn=(state.ghosts||[]).map(g=>g.name).join(' & ')||'the ghost';
+      role.innerHTML='🔦 YOU ARE A HUNTER<small>Hunting '+gn+' — sweep your light, watch the meter, FLASH to expose.</small>'; }
+
+    if(state.phase==='over'){
+      const conn=state.players.filter(p=>p.connected), first=conn.slice().sort((a,b)=>a.id-b.id)[0];
+      $('pAgainBtn').style.display=(first&&first.id===me.id)?'block':'none';
+      $('pHint').textContent='Game over — standings are on the TV.';
+      $('scareBtn').disabled=true; $('flashBtn').disabled=true; return;
+    }
+    $('pAgainBtn').style.display='none';
+    if(state.phase==='intermission'){
+      $('pHint').textContent=(state.result?state.result.sub:'')+'  ·  next round in '+Math.ceil(state.interLeft||0)+'s';
+      $('scareBtn').disabled=true; $('flashBtn').disabled=true; return;
+    }
+
+    // playing
+    if(iAmGhost){
+      if(myGhost && myGhost.caught){ $('pExpFill').style.width='100%'; $('pExpVal').textContent='CAUGHT';
+        $('scareBtn').disabled=true; $('scareBtn').textContent='😱 SCARE';
+        $('pHint').textContent='You were caught — watch the rest of the hunt on the TV.'; return; }
+      const exp=myGhost?myGhost.exposure:0, cd=myGhost?myGhost.scareCd:0, ready=cd<=0;
+      $('pExpFill').style.width=exp+'%';
+      $('pExpVal').textContent=Math.round(exp)+'%';
+      $('scareBtn').disabled=!ready;
+      $('scareBtn').textContent=ready?'😱 SCARE':'😱 '+Math.ceil(cd)+'s';
+      $('pHint').textContent=(exp>70)?'⚠ You\'re lit up — RUN!':'Drift through the shadows. Footprints fade fast.';
+    } else {
+      const mine=(state.hunters||[]).find(h=>h.id===me.id);
+      if(!mine){ $('flashBtn').disabled=true; $('hauntFill').style.width='0%'; $('hauntWord').textContent='—';
+        $('pHint').textContent='You\'ll join the hunt next round.'; return; }
+      if(window.__setAimVisual && typeof mine.aim==='number') window.__setAimVisual(mine.aim, true);
+      const prox=mine.prox||0, stunned=mine.stunned, ready=mine.flashReady;
+      $('hauntFill').style.width=Math.round(prox*100)+'%';
+      const word = stunned?'😵 BLINDED!' : prox<0.12?'cold…' : prox<0.4?'warmer' : prox<0.7?'WARM' : 'BURNING 🔥';
+      $('hauntWord').textContent=word;
+      $('hauntWord').style.color = stunned?'#ff5470' : prox<0.4?'#9a93b5' : prox<0.7?'#fbbf24' : '#ff5470';
+      $('flashBtn').disabled=!ready || stunned;
+      $('flashBtn').textContent= stunned?'🔦 BLINDED' : (ready?'🔦 FLASH':'🔦 …');
+      $('pHint').textContent= stunned?'Scared blind — your light\'s out for a moment.':'Follow the meter. FLASH when it\'s BURNING.';
+      if(!stunned && prox>0.6 && navigator.vibrate){ const now=Date.now(); if(now-pLastVibe>320){ pLastVibe=now; navigator.vibrate(prox>0.85?45:18); } }
+    }
+  }
+
+  // ---------- BEACON ----------
+  const clamp01 = (v) => v < 0 ? 0 : (v > 1 ? 1 : v);
+  let bPriv = null;                       // radar's private hazard map (server -> radar's phone only)
+  let bTurn = 0, bThrottle = 0.35, bSteerT = 0, bRadarTf = null;
+  function sendSteer(force) { const now = Date.now(); if (!force && now - bSteerT < 45) return; bSteerT = now; socket.emit('ctrl:bsteer', { turn: bTurn, throttle: bThrottle }); }
+  (function setupHelm() {
+    const thr = $('bThrottle');
+    thr.addEventListener('input', () => { bThrottle = (+thr.value) / 100; $('bThrVal').textContent = thr.value; sendSteer(false); });
+    function hold(btn, dir) {
+      const down = (e) => { e.preventDefault(); bTurn = dir; btn.classList.add('live'); sendSteer(true); };
+      const up = (e) => { if (e) e.preventDefault(); if (bTurn === dir) bTurn = 0; btn.classList.remove('live'); sendSteer(true); };
+      btn.addEventListener('pointerdown', down); btn.addEventListener('pointerup', up);
+      btn.addEventListener('pointercancel', up); btn.addEventListener('pointerleave', up);
+    }
+    hold($('bPort'), -1); hold($('bStar'), 1);
+  })();
+  (function setupRadarTap() {
+    const c = $('bradar');
+    c.addEventListener('pointerdown', (e) => { e.preventDefault(); if (!bRadarTf) return;
+      const r = c.getBoundingClientRect();
+      const px = (e.clientX - r.left) * (c.width / r.width), py = (e.clientY - r.top) * (c.height / r.height);
+      const nx = clamp01((px - bRadarTf.ox) / bRadarTf.sc / bRadarTf.W), ny = clamp01((py - bRadarTf.oy) / bRadarTf.sc / bRadarTf.H);
+      socket.emit('ctrl:bping', { nx, ny }); });
+  })();
+  $('bAgainBtn').addEventListener('click', () => socket.emit('ctrl:rematch'));
+  function drawBradar() {
+    const c = $('bradar'); if (!c) return; const g = c.getContext('2d'), CW = c.width, CH = c.height;
+    g.clearRect(0, 0, CW, CH); g.fillStyle = '#03060f'; g.fillRect(0, 0, CW, CH);
+    if (!bPriv) { g.fillStyle = '#46607a'; g.font = '14px Inter'; g.textAlign = 'center'; g.fillText('radar warming up…', CW / 2, CH / 2); return; }
+    const Wp = bPriv.W, Hp = bPriv.H, pad = 6;
+    const sc = Math.min((CW - pad * 2) / Wp, (CH - pad * 2) / Hp), ox = (CW - Wp * sc) / 2, oy = (CH - Hp * sc) / 2;
+    bRadarTf = { sc, ox, oy, W: Wp, H: Hp };
+    const TX = (x) => ox + x * sc, TY = (y) => oy + y * sc;
+    g.fillStyle = '#06223a'; g.fillRect(ox, oy, Wp * sc, Hp * sc);
+    const hcx = bPriv.harborCx != null ? bPriv.harborCx : Wp / 2;
+    g.fillStyle = 'rgba(52,211,153,0.22)'; g.fillRect(TX(hcx - bPriv.gap / 2), oy, bPriv.gap * sc, bPriv.harborY * sc);
+    for (const r of bPriv.rocks) { g.fillStyle = '#9a7350'; g.beginPath(); g.arc(TX(r.x), TY(r.y), Math.max(2, r.r * sc), 0, 7); g.fill(); }
+    for (const m of bPriv.mines) { g.fillStyle = '#ff5470'; g.beginPath(); g.arc(TX(m.x), TY(m.y), Math.max(2.5, m.r * sc), 0, 7); g.fill(); }
+    if (bPriv.ping) { g.strokeStyle = '#fbbf24'; g.lineWidth = 2.5; g.beginPath(); g.arc(TX(bPriv.ping.x), TY(bPriv.ping.y), 11, 0, 7); g.stroke(); }
+    const bx = TX(bPriv.boat.x), by = TY(bPriv.boat.y);
+    g.save(); g.globalCompositeOperation = 'lighter'; const gg = g.createRadialGradient(bx, by, 1, bx, by, 13);
+    gg.addColorStop(0, 'rgba(255,220,140,0.9)'); gg.addColorStop(1, 'rgba(255,220,140,0)'); g.fillStyle = gg; g.beginPath(); g.arc(bx, by, 13, 0, 7); g.fill(); g.restore();
+    g.fillStyle = '#fff6dc'; g.beginPath(); g.arc(bx, by, 4, 0, 7); g.fill();
+    g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + Math.cos(bPriv.boat.heading) * 17, by + Math.sin(bPriv.boat.heading) * 17); g.stroke();
+  }
+  function beaconState(state) {
+    if (state.phase === 'lobby') { show('lobby'); $('birdpick').classList.remove('show'); updateStartBtn(); return; }
+    show('bgame');
+    const iAmHelm = state.helmId === me.id, iAmRadar = state.radarId === me.id;
+    $('helmWrap').classList.toggle('show', iAmHelm);
+    $('radarWrap').classList.toggle('show', iAmRadar);
+    const role = $('bRole');
+    if (iAmHelm) { role.className = 'brole helm'; role.innerHTML = '🛞 YOU ARE THE HELM<small>You can\'t see the rocks. Throttle + hold PORT/STBD, and do exactly what your radar says.</small>'; }
+    else if (iAmRadar) { role.className = 'brole radar'; role.innerHTML = '📡 YOU ARE THE RADAR<small>Only you see the rocks. Call the route out loud — tap the map to mark "steer here".</small>'; }
+    else { role.className = 'brole'; role.innerHTML = '👀 SPECTATING<small>Two pilots are bringing the ship home.</small>'; }
+    $('bDeliv').textContent = state.delivered;
+    $('bLives').textContent = '❤'.repeat(Math.max(0, state.lives)) || '—';
+    $('bTime').textContent = Math.ceil(state.time) + 's';
+    if (iAmRadar) drawBradar();
+    if (state.phase === 'over') {
+      const conn = state.players.filter(p => p.connected), first = conn.slice().sort((a, b) => a.id - b.id)[0];
+      $('bAgainBtn').style.display = (first && first.id === me.id) ? 'block' : 'none';
+      $('bHint').textContent = 'Voyage over — see the tally on the TV.';
+      return;
+    }
+    $('bAgainBtn').style.display = 'none';
+    if (state.phase === 'arrived') {
+      const c = state.celebrate || {};
+      const role = $('bRole'); role.className = 'brole radar';
+      role.innerHTML = '🎉 ' + (c.message || 'Ship delivered!') + '<small>' + (c.sub || '') + '</small>';
+      $('bHint').textContent = 'Take a breath — Leg ' + (c.nextLeg || '') + ' coming up!';
+      if (navigator.vibrate) navigator.vibrate(c.record ? [40, 60, 40] : 30);
+      return;
+    }
+    $('bHint').textContent = iAmHelm ? 'Ease the throttle, hold a side to turn. Trust the radar.'
+      : iAmRadar ? 'Guide them: "rock on your left — ease right — straight!"' : '';
+  }
+
+  // ---------- TANDEM ----------
+  let tSide = 0, tLastBuzz = 0;            // -1 left leg, +1 right leg, 0 spectator
+  $('tStep').addEventListener('pointerdown', (e) => { e.preventDefault(); if (tSide !== 0) socket.emit('ctrl:push', {}); });
+  $('tJump').addEventListener('click', () => { if (tSide !== 0) socket.emit('ctrl:tjump', {}); });
+  $('tAgainBtn').addEventListener('click', () => socket.emit('ctrl:rematch'));
+  function tandemState(state) {
+    if (state.phase === 'lobby') { show('lobby'); $('birdpick').classList.remove('show'); updateStartBtn(); return; }
+    show('tgame');
+    tSide = state.leftId === me.id ? -1 : (state.rightId === me.id ? 1 : 0);
+    const role = $('tRole');
+    if (tSide !== 0) { role.className = 'trole'; role.style.color = (me && me.color) || '#fff';
+      role.innerHTML = (tSide < 0 ? '🦵 LEFT LEG' : '🦵 RIGHT LEG') + '<small>Tap STEP in rhythm with your partner. Both tap JUMP to clear a gap.</small>'; }
+    else { role.className = 'trole'; role.style.color = ''; role.innerHTML = '👀 SPECTATING<small>Two players share one wobbly strider.</small>'; }
+    $('tStage').textContent = state.stage;
+    $('tHearts').textContent = '❤ ' + state.hearts;
+    $('tTime').textContent = Math.ceil(state.time) + 's';
+    const nub = $('tNub'); nub.style.left = (clamp01((state.lean + 1) / 2) * 100) + '%';
+    const mag = Math.abs(state.lean);
+    nub.style.background = mag > 0.6 ? '#fb7185' : (mag > 0.3 ? '#f59e0b' : '#34d399');
+    $('tBalWord').textContent = state.fallen ? 'fallen!' : (mag > 0.6 ? 'tipping!' : (mag > 0.3 ? 'wobbly' : 'steady'));
+    const myTurn = (state.nextStep === 'L' && tSide < 0) || (state.nextStep === 'R' && tSide > 0);
+    $('tStep').classList.toggle('go', myTurn && !state.fallen);
+    if (myTurn && !state.fallen && navigator.vibrate) { const now = Date.now(); if (now - tLastBuzz > 220) { tLastBuzz = now; navigator.vibrate(12); } }
+    if (state.phase === 'won' || state.phase === 'lost') {
+      const conn = state.players.filter(p => p.connected), first = conn.slice().sort((a, b) => a.id - b.id)[0];
+      $('tAgainBtn').style.display = (first && first.id === me.id) ? 'block' : 'none';
+      $('tStep').disabled = true; $('tJump').disabled = true;
+      $('tHint').textContent = 'Run it back from the TV.';
+      return;
+    }
+    $('tAgainBtn').style.display = 'none';
+    if (state.phase === 'cleared') {
+      const c = state.celebrate || {};
+      const role = $('tRole'); role.className = 'trole'; role.style.color = '#34d399';
+      role.innerHTML = '🎉 ' + (c.message || 'Stage cleared!') + '<small>' + (c.sub || '') + '</small>';
+      $('tStep').classList.remove('go'); $('tStep').disabled = true; $('tJump').disabled = true;
+      $('tHint').textContent = 'Stage ' + (c.nextStage || '') + ' coming up — shake it out!';
+      if (navigator.vibrate) navigator.vibrate(c.record ? [40, 60, 40] : 30);
+      return;
+    }
+    $('tStep').disabled = (tSide === 0); $('tJump').disabled = (tSide === 0);
+    $('tHint').textContent = tSide === 0 ? 'Spectating.' : (state.nextStep === 'any' ? 'Alternate steps to walk forward.' : (myTurn ? 'YOUR turn — STEP!' : 'Let your partner step…'));
+  }
+
+  // ---------- THE GLADE ----------
+  const GTERR = [
+    ['grass','#6fbf63','Grass'],['meadow','#7fce6b','Meadow'],['moss','#4f9b54','Moss'],
+    ['mud','#8a5a3b','Soil'],['sand','#e6d39a','Sand'],['pebble','#b7bcc2','Pebble'],
+    ['path','#c39a66','Path'],['deck','#c08a4e','Deck'],['stone','#9aa1a8','Stone'],
+    ['water','#6cc1e8','Water'],['deep','#3f93c9','Deep'],
+  ];
+  const GCATS = {
+    Flora:   [['reed','🌾',0],['lily','🪷',8],['cattail','🎍',6],['fern','🌿',5],['clover','🍀',4],['bush','🌳',10],['pine','🌲',10],['sapling','🌱',0],['rock','🪨',5],['logd','🪵',5],['mushroom','🍄',8]],
+    Flowers: [['fpink','🌸',0],['frose','🌷',5],['fsun','🌻',8],['fdaisy','🌼',5],['fhya','🪻',6],['lotus','🪷',18]],
+    Crops:   [['carrot','🥕',0],['strawberry','🍓',6],['tomato','🍅',6],['corn','🌽',8],['pumpkin','🎃',10],['blueberry','🫐',8]],
+    Decor:   [['sign','🪧',6],['shell','🐚',4],['nest','🪺',8],['campfire','🔥',12],['lantern','🏮',14],['fairy','✨',20],['canoe','🛶',16]],
+    Build:   [['bridge','🌉',30],['lodge','🛖',40],['dam','🦫',50],['willow','🌳',45],['well','⛲',35],['well2','🏕️',25]],
+    Critters:[['rDuck','🦆',18],['rTurtle','🐢',18],['rSwan','🦢',28],['rRabbit','🐇',18],['rHedge','🦔',18],['rOwl','🦉',25]],
+  };
+  const GLABEL = { reed:'Reeds',lily:'Lily pad',cattail:'Cattail',fern:'Fern',clover:'Clover',bush:'Tree',pine:'Pine',sapling:'Sapling',rock:'Rock',logd:'Log',mushroom:'Mushroom',
+    fpink:'Blossom',frose:'Tulip',fsun:'Sunflower',fdaisy:'Daisy',fhya:'Hyacinth',lotus:'Lotus',
+    carrot:'Carrot',strawberry:'Berry',tomato:'Tomato',corn:'Corn',pumpkin:'Pumpkin',blueberry:'Blueberry',
+    sign:'Sign',shell:'Shell',nest:'Nest',campfire:'Campfire',lantern:'Lantern',fairy:'Fairy light',canoe:'Canoe',
+    bridge:'Bridge',lodge:'Lodge',dam:'Dam',willow:'Willow',well:'Well',well2:'Camp',
+    rDuck:'Duck',rTurtle:'Turtle',rSwan:'Swan',rRabbit:'Rabbit',rHedge:'Hedgehog',rOwl:'Owl' };
+  const GTAB_ORDER = ['Ground','Flora','Flowers','Crops','Decor','Build','Critters'];
+  let gTab = 'Flora', gHold = { kind:'object', value:'reed' }, gUnlocked = new Set(), gDewN = 0, gInited = false;
+
+  function gFind(v){ for(const c in GCATS){ const f=GCATS[c].find(x=>x[0]===v); if(f) return f; } return null; }
+  function gSendHold(){ socket.emit('ctrl:gladeHold', gHold);
+    const lbl = gHold.kind==='terrain' ? ('🖌️ '+((GTERR.find(x=>x[0]===gHold.value)||[])[2]||'')+' ground')
+              : ((gFind(gHold.value)||[])[1]||'•')+' '+(GLABEL[gHold.value]||gHold.value);
+    $('gHoldLbl').textContent = 'Holding: '+lbl; }
+  // progressive menu: a category tab only appears once you OWN something in it; the
+  // shop is tucked into a separate ✨ Discover screen so building stays uncluttered.
+  function gOwned(cat){ return (GCATS[cat]||[]).some(a=>gUnlocked.has(a[0])); }
+  function gVisibleTabs(){ const t=['Ground']; for(const c of ['Flora','Flowers','Crops','Decor','Build','Critters']) if(gOwned(c)) t.push(c); t.push('Discover'); return t; }
+  function gRenderTabs(){ const wrap=$('gTabs'); wrap.innerHTML=''; const tabs=gVisibleTabs(); if(!tabs.includes(gTab)) gTab=tabs[0];
+    tabs.forEach(t=>{ const b=document.createElement('button'); b.className='gtab'+(t===gTab?' sel':'')+(t==='Discover'?' disc':''); b.textContent = t==='Discover'?'✨ Discover':t;
+      b.addEventListener('click',()=>{ gTab=t; gRenderTabs(); gRenderItems(); refreshActionLabel(); }); wrap.appendChild(b); }); }
+  function refreshActionLabel(){ $('gPlace').textContent = gTab==='Build'?'BUILD' : gTab==='Ground'?'PAINT' : gTab==='Critters'?'RELEASE' : 'PLANT'; }
+  function gRenderItems(){
+    const wrap=$('gItems'); if(!wrap) return; wrap.innerHTML='';
+    if(gTab==='Ground'){
+      GTERR.forEach(([v,c,n])=>{ const el=document.createElement('div'); el.className='gcell'+(gHold.kind==='terrain'&&gHold.value===v?' sel':'');
+        el.innerHTML='<span class="lab">'+n+'</span><div class="sw" style="background:'+c+'"></div>';
+        el.addEventListener('click',()=>{ gHold={kind:'terrain',value:v}; gSendHold(); gRenderItems(); }); wrap.appendChild(el); });
+      return;
+    }
+    if(gTab==='Discover'){   // the calm shop — browse & unlock, kept out of the way of building
+      let any=false;
+      ['Flora','Flowers','Crops','Decor','Build','Critters'].forEach(c=> (GCATS[c]||[]).forEach(arr=>{ const v=arr[0], e=arr[1], price=arr[2]||0; if(gUnlocked.has(v)) return; any=true;
+        const poor=gDewN<price; const el=document.createElement('div'); el.className='gcell shop'+(poor?' poor':'');
+        el.innerHTML = e + '<span class="cost">💧'+price+'</span><span class="lab">'+(GLABEL[v]||'')+'</span>';
+        if(!poor) el.addEventListener('click',()=>{ socket.emit('ctrl:gladeBuy',{value:v}); }); wrap.appendChild(el); }));
+      if(!any){ const el=document.createElement('div'); el.className='gnone'; el.textContent='✨ Everything discovered!'; wrap.appendChild(el); }
+      return;
+    }
+    // a category you own — show only the items you actually have
+    (GCATS[gTab]||[]).forEach(arr=>{ const v=arr[0], e=arr[1]; if(!gUnlocked.has(v)) return;
+      const el=document.createElement('div'); el.className='gcell'+(gHold.kind!=='terrain'&&gHold.value===v?' sel':'');
+      el.innerHTML = e + '<span class="lab">'+(GLABEL[v]||'')+'</span>';
+      el.addEventListener('click',()=>{ gHold={kind:'object',value:v}; gSendHold(); gRenderItems(); }); wrap.appendChild(el); });
+  }
+  (function gSetupStick(){
+    const pad=$('gStick'), nub=$('gNub'); let active=false,cx=0,cy=0,R=1,last=0;
+    function center(){ const r=pad.getBoundingClientRect(); cx=r.left+r.width/2; cy=r.top+r.height/2; R=Math.min(r.width,r.height)*0.32; }
+    function send(vx,vy,force){ const now=Date.now(); if(!force&&now-last<55) return; last=now; socket.emit('ctrl:gladeMove',{vx,vy}); }
+    const move=e=>{ if(!active) return; let dx=(e.clientX-cx)/R, dy=(e.clientY-cy)/R; const m=Math.hypot(dx,dy); if(m>1){dx/=m;dy/=m;} nub.style.transform='translate('+dx*R+'px,'+dy*R+'px)'; send(dx,dy,false); };
+    const down=e=>{ e.preventDefault(); center(); active=true; pad.classList.add('live'); try{ pad.setPointerCapture(e.pointerId); }catch(_){ } move(e); };
+    const up=()=>{ if(!active) return; active=false; pad.classList.remove('live'); nub.style.transform='translate(0,0)'; send(0,0,true); };
+    pad.addEventListener('pointerdown',down); pad.addEventListener('pointermove',move); pad.addEventListener('pointerup',up); pad.addEventListener('pointercancel',up);
+  })();
+  function gHoldBtn(btn, fn, ms){ let timer=null;
+    const start=e=>{ e.preventDefault(); fn(); if(timer) clearInterval(timer); timer=setInterval(fn, ms); };
+    const stop=()=>{ if(timer){ clearInterval(timer); timer=null; } };
+    btn.addEventListener('pointerdown',start); btn.addEventListener('pointerup',stop); btn.addEventListener('pointercancel',stop); btn.addEventListener('pointerleave',stop);
+  }
+  gHoldBtn($('gPlace'), ()=> socket.emit('ctrl:gladePlace', gHold), 150);
+  gHoldBtn($('gTend'),  ()=> socket.emit('ctrl:gladeTend', {}), 170);
+  gHoldBtn($('gErase'), ()=> socket.emit('ctrl:gladeErase', {}), 180);
+
+  function gladeState(state){
+    show('ggame');
+    if(me && state.builders){ const mine=state.builders.find(b=>b.id===me.id); if(mine) $('gAv').textContent = mine.av || '🐸'; }
+    gDewN = state.dew||0;
+    $('gDew').textContent = '💧 '+gDewN;
+    $('gDisc').textContent = (state.discoveries||0)+' discoveries';
+    const prevUn = gUnlocked.size; gUnlocked = new Set(state.unlocked||[]);
+    if(state.wish){ $('gWish').style.display='flex'; $('gWishIcon').textContent=state.wish.icon; $('gWishText').textContent=state.wish.text; $('gWishProg').textContent=state.wish.have+'/'+state.wish.goal; }
+    else $('gWish').style.display='none';
+    if(!gInited){ gInited=true; gRenderTabs(); refreshActionLabel(); gSendHold(); }
+    else if(gUnlocked.size!==prevUn){ gRenderTabs(); refreshActionLabel(); }   // a new item → its tab can now appear
+    gRenderItems();
+  }
+
   socket.on('ctrl:state', (state) => {
     lastState = state;
     if (!me) return;
     if (state.game === 'menu') { menuState(state); return; }
     if (state.game === 'frogger') { froggerState(state); return; }
+    if (state.game === 'poltergeist') { poltergeistState(state); return; }
+    if (state.game === 'beacon') { beaconState(state); return; }
+    if (state.game === 'tandem') { tandemState(state); return; }
+    if (state.game === 'glade') { gladeState(state); return; }
 
     if (state.phase === 'lobby') { show('lobby'); $('birdpick').classList.remove('show'); updateStartBtn(); return; }
     show('game');

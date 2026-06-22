@@ -412,7 +412,7 @@
   // ---- input from phones ----
   function roomLeaderId(){ const c=[...roster.values()].filter(p=>p.connected).sort((a,b)=>a.id-b.id); return c[0]?c[0].id:null; }
   function applyInput(id,type,p){
-    if(type==='selectGame'){ if(id===roomLeaderId()){ const g=p&&p.game; location.href = g==='cannons'?'/couch?room='+ROOM : g==='frogger'?'/frogger?room='+ROOM : '/?room='+ROOM; } return; }
+    if(type==='selectGame'){ if(id===roomLeaderId()){ const g=p&&p.game; location.href = g==='cannons'?'/couch?room='+ROOM : g==='frogger'?'/frogger?room='+ROOM : g==='poltergeist'?'/poltergeist?room='+ROOM : g==='beacon'?'/beacon?room='+ROOM : g==='tandem'?'/tandem?room='+ROOM : g==='glade'?'/glade?room='+ROOM : '/?room='+ROOM; } return; }
     if(type==='start'){ if(phase==='lobby') newMatch(); return; }
     if(type==='rematch'){ if(phase==='over') newMatch(); return; }
     if(type==='char'){ const r=roster.get(id); if(r){ r.type=p.type; if(G&&G.birds.get(id)) G.birds.get(id).type=p.type; } broadcast(true); return; }

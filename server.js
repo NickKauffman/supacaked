@@ -31,10 +31,14 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }));
 const noStore = { headers: { 'Cache-Control': 'no-store' } };
 const page = (file) => (_req, res) => res.sendFile(path.join(__dirname, 'public', file), noStore);
-app.get('/', page('launcher.html'));        // SupaCaked room + menu (the TV)
-app.get('/couch', page('host.html'));        // Couch Cannons (the TV)
-app.get('/frogger', page('frogger.html'));   // Fowl Crossing (the TV)
-app.get('/play', page('controller.html'));   // phone controller
+app.get('/', page('launcher.html'));            // SupaCaked room + menu (the TV)
+app.get('/couch', page('host.html'));           // Couch Cannons (the TV)
+app.get('/frogger', page('frogger.html'));      // Fowl Crossing (the TV)
+app.get('/poltergeist', page('poltergeist.html')); // Poltergeist (the TV)
+app.get('/beacon', page('beacon.html'));        // Beacon — 2-player co-op (the TV)
+app.get('/tandem', page('tandem.html'));        // Tandem — 2-player co-op (the TV)
+app.get('/glade', page('glade.html'));          // The Glade — co-op world builder (the TV)
+app.get('/play', page('controller.html'));      // phone controller
 
 function getLanIp() {
   const nets = os.networkInterfaces();
@@ -106,6 +110,17 @@ io.on('connection', (socket) => {
   // TV render-state -> only this room's phones.
   socket.on('host:state', (state) => { if (code && rooms.has(code)) io.to(code).emit('ctrl:state', state); });
 
+  // TV private message -> exactly one player in the room (by player id).
+  // Used by Poltergeist to hand the Ghost its true position without leaking it
+  // to the Hunters' phones (who only ever see the public host:state).
+  socket.on('host:to', ({ id, payload }) => {
+    const room = code && rooms.get(code);
+    if (!room) return;
+    for (const p of room.players.values()) {
+      if (p.id === id && p.connected && p.socketId) { io.to(p.socketId).emit('ctrl:priv', payload); break; }
+    }
+  });
+
   // ---- Phone joins a specific room by code ----
   socket.on('ctrl:join', ({ name, token: t, color, code: c }) => {
     role = 'controller'; token = t;
@@ -142,6 +157,20 @@ io.on('connection', (socket) => {
   socket.on('ctrl:ride', forward('ride'));          // Fowl Crossing piggyback jump-off
   socket.on('ctrl:rocket', forward('rocket'));      // Fowl Crossing rocket launch
   socket.on('ctrl:char', forward('char'));          // Fowl Crossing bird choice
+  socket.on('ctrl:gmove', forward('gmove'));        // Poltergeist — ghost move vector
+  socket.on('ctrl:gscare', forward('gscare'));      // Poltergeist — ghost scare
+  socket.on('ctrl:haim', forward('haim'));          // Poltergeist — hunter beam aim
+  socket.on('ctrl:hflash', forward('hflash'));      // Poltergeist — hunter flashlight burst
+  socket.on('ctrl:bsteer', forward('bsteer'));      // Beacon — helm steering (turn + throttle)
+  socket.on('ctrl:bping', forward('bping'));        // Beacon — radar drops a "go here" marker
+  socket.on('ctrl:push', forward('push'));          // Tandem — a player pushes their leg
+  socket.on('ctrl:tjump', forward('tjump'));        // Tandem — a player calls a jump (needs both)
+  socket.on('ctrl:gladeMove', forward('gladeMove'));   // The Glade — move your critter
+  socket.on('ctrl:gladeHold', forward('gladeHold'));   // The Glade — set the held palette item
+  socket.on('ctrl:gladePlace', forward('gladePlace')); // The Glade — place / start a build
+  socket.on('ctrl:gladeErase', forward('gladeErase')); // The Glade — remove a tile/object
+  socket.on('ctrl:gladeTend', forward('gladeTend'));   // The Glade — tend (co-op build / water / pet)
+  socket.on('ctrl:gladeBuy', forward('gladeBuy'));     // The Glade — unlock/buy an item with dewdrops
   socket.on('ctrl:menu', forward('menu'));             // phone moves the menu cursor
   socket.on('ctrl:selectGame', forward('selectGame')); // phone confirms a game
   socket.on('ctrl:start', forward('start'));

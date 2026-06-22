@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Beacon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@600;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{ --ink:#e7f3ff; --muted:#8aa0bf; --sky:#38bdf8; --amber:#fbbf24; --green:#34d399; --danger:#ff5470; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#03060f;overflow:hidden;font-family:'Inter',system-ui,sans-serif;color:var(--ink);}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
+  canvas{width:min(100vw, calc(100vh * 16 / 9));height:auto;display:block;background:#03060f;}
+
+  .overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:20;}
+  .overlay.show{display:flex;}
+
+  #lobby{background:radial-gradient(120% 90% at 50% -5%, #0c2036 0%, #03060f 62%);}
+  .lobby-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:48px;width:min(1180px,90vw);align-items:center;}
+  .title{font-family:'Anton',sans-serif;font-size:clamp(50px,9vw,128px);line-height:.84;margin:0;letter-spacing:1px;
+    background:linear-gradient(90deg,#7dd3fc,#38bdf8 55%,#fbbf24);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 34px rgba(56,189,248,.5));}
+  .ic{font-size:clamp(40px,7vw,92px);filter:drop-shadow(0 0 22px rgba(251,191,36,.55));}
+  .tag{color:var(--muted);font-size:clamp(15px,1.5vw,21px);font-weight:700;margin:16px 0 26px;max-width:44ch;line-height:1.55;}
+  .tag b{color:var(--ink);}
+  .joinbox{display:flex;align-items:center;gap:22px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:22px;padding:22px;}
+  #qr{width:148px;height:148px;background:#fff;border-radius:14px;padding:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;}
+  .joininfo .k{font-size:13px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);font-weight:800;}
+  .joininfo .url{font-family:'Anton',sans-serif;font-size:clamp(22px,2.4vw,34px);margin:4px 0 14px;}
+  .joininfo .code{display:inline-block;font-family:'Anton',sans-serif;font-size:34px;letter-spacing:8px;background:var(--sky);color:#04222e;padding:4px 16px;border-radius:12px;}
+  .roster{display:flex;flex-direction:column;gap:12px;}
+  .roster h2{font-family:'Anton',sans-serif;font-size:24px;margin:0 0 6px;color:var(--muted);letter-spacing:2px;}
+  .rlist{display:flex;flex-direction:column;gap:10px;min-height:60px;}
+  .pill{display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.05);border-radius:14px;padding:12px 16px;font-size:22px;font-weight:800;}
+  .pill i{width:22px;height:22px;border-radius:7px;flex:0 0 auto;box-shadow:0 0 14px currentColor;}
+  .pill .tagr{margin-left:auto;font-size:14px;font-weight:800;letter-spacing:1px;color:var(--muted);}
+  .pill.off{opacity:.4;}
+  .empty-hint{color:var(--muted);font-weight:700;font-size:18px;padding:8px 2px;}
+  .startcue{margin-top:18px;color:var(--amber);font-weight:800;font-size:18px;min-height:24px;}
+
+  #card{background:rgba(3,6,15,.84);backdrop-filter:blur(4px);flex-direction:column;gap:14px;text-align:center;}
+  #card .big{font-family:'Anton',sans-serif;font-size:clamp(40px,7vw,92px);margin:0;line-height:.95;}
+  #card .sub{color:var(--muted);font-weight:800;font-size:22px;max-width:40ch;}
+  #card .stat{font-family:'Anton',sans-serif;font-size:30px;margin-top:6px;}
+
+  .homelink{position:fixed;bottom:14px;left:16px;z-index:30;color:#e7f3ff;text-decoration:none;font-weight:900;font-size:14px;background:rgba(0,0,0,.5);padding:8px 14px;border-radius:10px;}
+  .homelink:hover{background:rgba(0,0,0,.8);}
+  #soundgate{position:fixed;bottom:14px;right:16px;z-index:30;cursor:pointer;background:rgba(0,0,0,.6);color:#fff;font-weight:800;font-size:14px;padding:9px 15px;border-radius:12px;border:1px solid rgba(255,255,255,.28);box-shadow:0 3px 12px rgba(0,0,0,.45);animation:sgpulse 1.6s ease-in-out infinite;}
+  @keyframes sgpulse{0%,100%{transform:scale(1);opacity:.92;}50%{transform:scale(1.05);opacity:1;}}
+</style>
+</head>
+<body>
+<a class="homelink" href="/">← Games</a>
+<div id="soundgate">🔊 Click anywhere to turn on sound</div>
+<div id="stage"><canvas id="cv" width="1920" height="1080"></canvas></div>
+
+<!-- LOBBY -->
+<div id="lobby" class="overlay show">
+  <div class="lobby-grid">
+    <div>
+      <h1 class="title">BEACON</h1>
+      <p class="tag"><span class="ic">🔦</span> Two harbor pilots, one storm. <b>One of you mans the radar</b> — only your phone shows the hidden rocks. <b>The other takes the helm</b> and steers the ship through the fog, blind. Talk each other home. Bring in as many ships as you can before the sea claims three.</p>
+      <div class="joinbox">
+        <div id="qr"></div>
+        <div class="joininfo">
+          <div class="k">On your phone, open</div>
+          <div class="url" id="joinUrl">loading…</div>
+          <div class="k">Room code</div><br>
+          <span class="code" id="roomCode">····</span>
+        </div>
+      </div>
+    </div>
+    <div class="roster">
+      <h2>HELM &amp; RADAR</h2>
+      <div class="rlist" id="rlist"><div class="empty-hint">No one's joined yet…</div></div>
+      <div class="startcue" id="startcue"></div>
+    </div>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="card" class="overlay">
+  <div class="big" id="cardBig">—</div>
+  <div class="sub" id="cardSub"></div>
+  <div class="stat" id="cardStat"></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@gh-pages/qrcode.min.js"></script>
+<script>
+(function(){
+  "use strict";
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  const socket = io();
+  const params = new URLSearchParams(location.search);
+  const ROOM = (params.get('room') || '').toUpperCase();
+  const DEV = params.has('dev');   // ?dev=1 reveals the hazard field + exposes window.__setLeg(n) for testing
+
+  // ---------- tunables ----------
+  const HARBOR_Y = 150, GAP = 360;                 // harbor opening width at the top (position varies per leg)
+  const BOAT_R = 20, MAX_SPEED = 240, TURN_RATE = 1.95;
+  const LIVES = 3;
+
+  // ---------- sound ----------
+  const SFX = (function(){
+    let ac=null, master=null, noiseBuf=null;
+    function init(){ if(ac) return; const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+      ac=new AC(); master=ac.createGain(); master.gain.value=0.5; master.connect(ac.destination);
+      noiseBuf=ac.createBuffer(1,ac.sampleRate,ac.sampleRate); const d=noiseBuf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1; }
+    function on(){ init(); if(ac&&ac.state==='suspended') ac.resume(); }
+    function env(g,t0,a,dur,peak){ g.gain.setValueAtTime(0.0001,t0); g.gain.exponentialRampToValueAtTime(peak,t0+a); g.gain.exponentialRampToValueAtTime(0.0001,t0+dur); }
+    function tone(o){ if(!ac) return; const t0=ac.currentTime+(o.delay||0), dur=o.dur||0.3;
+      const osc=ac.createOscillator(); osc.type=o.type||'sine'; osc.frequency.setValueAtTime(o.f,t0);
+      if(o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(1,o.f2),t0+dur);
+      const g=ac.createGain(); env(g,t0,o.a||0.01,dur,o.gain||0.3); osc.connect(g); g.connect(master); osc.start(t0); osc.stop(t0+dur+0.05); }
+    function noise(o){ if(!ac) return; const t0=ac.currentTime+(o.delay||0), dur=o.dur||0.4;
+      const s=ac.createBufferSource(); s.buffer=noiseBuf; s.loop=true; const f=ac.createBiquadFilter(); f.type=o.filter||'lowpass';
+      f.frequency.setValueAtTime(o.f||800,t0); if(o.f2) f.frequency.exponentialRampToValueAtTime(Math.max(40,o.f2),t0+dur); if(o.q!=null) f.Q.value=o.q;
+      const g=ac.createGain(); env(g,t0,o.a||0.01,dur,o.gain||0.3); s.connect(f); f.connect(g); g.connect(master); s.start(t0); s.stop(t0+dur+0.05); }
+    return { on, state(){ return ac?ac.state:'none'; },
+      dockbell(){ on(); tone({type:'sine', f:880, dur:0.5, gain:0.16}); tone({type:'sine', f:1320, dur:0.5, gain:0.09, delay:0.02}); },
+      // triumphant little fanfare when a ship makes harbour — brighter as the streak grows
+      fanfare(streak){ on(); const s=Math.min(4,streak||1);
+        [523.25,659.25,783.99,1046.5].forEach((f,i)=>{ tone({type:'triangle', f, dur:0.4, gain:0.2, delay:i*0.1});
+          tone({type:'sine', f:f/2, dur:0.4, gain:0.1, delay:i*0.1}); });
+        tone({type:'triangle', f:1318.5, dur:0.6, gain:0.18, delay:0.42});
+        if(s>=2) tone({type:'sine', f:1567.98, dur:0.5, gain:0.12, delay:0.52}); },
+      // a bigger flourish + bass for milestones (every 5 ships)
+      milestone(){ on();
+        [523.25,659.25,783.99,1046.5,1318.5,1046.5,1318.5,1567.98,2093].forEach((f,i)=> tone({type:'triangle', f, dur:0.3, gain:0.2, delay:i*0.11}));
+        [130.81,196,261.63,196,261.63].forEach((f,i)=> tone({type:'sine', f, dur:0.55, gain:0.16, delay:i*0.22})); },
+      record(){ on(); [[659,0],[880,0.12],[1108,0.24],[1318,0.36],[1760,0.5]].forEach(([f,d])=> tone({type:'triangle',f,dur:0.4,gain:0.2,delay:d})); },
+      sparkle(){ on(); for(let i=0;i<5;i++) tone({type:'sine', f:1200+Math.random()*1400, dur:0.12, gain:0.06, delay:i*0.05}); },
+      cheer(){ on(); [[523,0],[659,0.14],[784,0.28],[1046,0.44],[1318,0.6],[1046,0.74]].forEach(([f,d])=> tone({type:'triangle',f,dur:0.42,gain:0.18,delay:d})); [130.8,196,261.6].forEach((f,i)=>tone({type:'sine',f,dur:0.8,gain:0.14,delay:i*0.3})); },
+      crash(){ on(); noise({filter:'lowpass', f:700, f2:90, dur:0.6, gain:0.34}); tone({type:'sawtooth', f:120, f2:44, dur:0.7, gain:0.24}); },
+      warn(){ on(); tone({type:'square', f:760, dur:0.1, gain:0.12}); },
+      ping(){ on(); tone({type:'sine', f:1320, dur:0.16, gain:0.12}); },
+      gameover(){ on(); [[392,0],[330,0.18],[262,0.36]].forEach(([f,d])=> tone({type:'sine',f,dur:0.4,gain:0.2,delay:d})); } };
+  })();
+  const soundGate=document.getElementById('soundgate');
+  function refreshSound(){ if(soundGate) soundGate.style.display=(SFX.state()==='running')?'none':'block'; }
+  function unlockSound(){ SFX.on(); setTimeout(refreshSound,50); }
+  ['pointerdown','keydown','touchstart','click'].forEach(ev=> window.addEventListener(ev, unlockSound));
+  if(soundGate) soundGate.addEventListener('click', unlockSound);
+  setInterval(refreshSound,1000); refreshSound();
+
+  // ---------- helpers ----------
+  const clamp=(v,a,b)=> v<a?a:(v>b?b:v);
+  function distSeg(px,py,ax,ay,bx,by){
+    const dx=bx-ax, dy=by-ay, l2=dx*dx+dy*dy;
+    let t = l2 ? ((px-ax)*dx+(py-ay)*dy)/l2 : 0; t=clamp(t,0,1);
+    return Math.hypot(px-(ax+dx*t), py-(ay+dy*t));
+  }
+  function distPoly(px,py,pts){ let m=1e9; for(let i=0;i<pts.length-1;i++) m=Math.min(m, distSeg(px,py,pts[i].x,pts[i].y,pts[i+1].x,pts[i+1].y)); return m; }
+
+  // ---------- match state ----------
+  const roster = new Map();      // id -> {id,name,color,connected}
+  let G = null;
+  let phase = 'lobby';           // lobby | playing | over
+  let roleSwap = false;          // toggled on each rematch so steering swaps
+  let delivered = 0, lives = LIVES, legIndex = 0;
+  let streak = 0, bestRun = +(localStorage.getItem('beacon_best')||0), newRecord = false;
+  let arriveEndsAt = 0, celebrate = null;            // between-leg cutscene
+  let confetti = [], fireworks = [], harborGlow = 0, legIntroT = 0, legIntroN = 0;
+  let banner = null, bannerT = 0;   // mid-screen flash ("Crash!")
+  let lastBroadcast = 0, lastWarn = 0;
+
+  function connectedPlayers(){ return [...roster.values()].filter(p=>p.connected); }
+  function activePair(){ return connectedPlayers().sort((a,b)=>a.id-b.id).slice(0,2); }
+  function roomLeaderId(){ const c=connectedPlayers().sort((a,b)=>a.id-b.id); return c[0]?c[0].id:null; }
+  function roleIds(){
+    const pair=activePair(); if(pair.length<2) return { helmId:null, radarId:null };
+    const a=pair[0].id, b=pair[1].id;
+    return roleSwap ? { helmId:b, radarId:a } : { helmId:a, radarId:b };
+  }
+
+  // ---------- leg generation ----------
+  function genLeg(idx){
+    // a winding safe corridor from a random entry up to a random harbour opening,
+    // so no two legs start/end in the same place
+    const corridorR = Math.max(118, 196 - idx*11);
+    const startX  = clamp(W*0.5 + (Math.random()-0.5)*W*0.66, 200, W-200);   // entry anywhere along the bottom
+    const startY  = H-160;
+    const harborCx = clamp(W*0.5 + (Math.random()-0.5)*W*0.72, GAP/2+70, W-GAP/2-70); // harbour gap centre along the top
+    const segs = 3 + Math.min(3, Math.floor(idx/2));
+    const way = [{x:startX, y:startY}];
+    for(let i=1;i<segs;i++){
+      const t=i/segs;
+      const base = startX + (harborCx-startX)*t;                         // lean the channel from entry toward the harbour
+      const x = clamp(base + Math.sin(i*1.7+idx)*W*(0.14+0.05*idx*0.1) + (Math.random()-0.5)*240, 200, W-200);
+      const y = startY + (HARBOR_Y+40 - startY)*t;
+      way.push({x,y});
+    }
+    way.push({x:harborCx, y:HARBOR_Y+30});
+
+    // scatter rocks everywhere the corridor isn't
+    const rocks=[];
+    const step = 92;
+    for(let x=120; x<W-120; x+=step){
+      for(let y=HARBOR_Y+60; y<H-90; y+=step){
+        const jx=x+(Math.random()-0.5)*46, jy=y+(Math.random()-0.5)*46;
+        if(Math.hypot(jx-startX, jy-startY) < 150) continue;            // keep the start clear
+        if(distPoly(jx,jy,way) <= corridorR) continue;                  // keep the channel clear
+        if(Math.random() < 0.34) continue;                              // thin it out a little
+        rocks.push({ x:jx, y:jy, r:24+Math.random()*22 });
+      }
+    }
+    // drifting mines on the tougher legs
+    const mines=[];
+    const mineCount = Math.max(0, idx-2);
+    for(let i=0;i<mineCount;i++){
+      const w = way[1+Math.floor(Math.random()*(way.length-2))];
+      const a = Math.random()*Math.PI*2, sp=34+Math.random()*26;
+      mines.push({ x:w.x+(Math.random()-0.5)*120, y:w.y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, r:18 });
+    }
+    const aim = Math.atan2(way[1].y-startY, way[1].x-startX);            // face the first waypoint
+    return {
+      boat:{ x:startX, y:startY, heading:aim, turn:0, throttle:0.35, wake:[] },
+      rocks, mines, way, startX, startY, harborCx,
+      timeMax: Math.max(13, 26 - idx*1.2),
+      time: Math.max(13, 26 - idx*1.2),
+      ping:null, boom:null, shake:0,
+    };
+  }
+
+  // ---------- flow ----------
+  const ARRIVE_DUR = 3.4;
+  const PRAISE = ['Beautifully done!','Smooth sailing!','Not a scratch on her!','Textbook piloting!','The harbour master tips his cap.','You two are a great team!','In perfect sync!','Another one home safe!','Pure teamwork.'];
+
+  function startLeg(idx){
+    legIndex=idx; G=genLeg(idx); phase='playing';
+    legIntroN=idx+1; legIntroT=2.0;     // "LEG N" intro card
+    broadcast(true);
+  }
+  function newMatch(){
+    if(activePair().length<2) return;
+    delivered=0; lives=LIVES; streak=0; newRecord=false; confetti=[]; fireworks=[]; celebrate=null;
+    hideOverlay('lobby'); hideOverlay('card');
+    startLeg(0);
+    banner={text:'Bring her in!', color:'#fbbf24'}; bannerT=1.4;
+  }
+  function loseLife(reason){
+    lives--; streak=0; SFX.crash();
+    G.boom={ x:G.boat.x, y:G.boat.y, life:1 }; G.shake=1;
+    banner={text:reason, color:'#ff5470'}; bannerT=1.6;
+    if(lives<=0){ gameOver(); return; }
+    // retry the SAME leg layout from its entry (don't reroll the channel)
+    const keep=G; G=genLeg(legIndex);
+    G.rocks=keep.rocks; G.mines=keep.mines; G.way=keep.way;
+    G.startX=keep.startX; G.startY=keep.startY; G.harborCx=keep.harborCx;
+    G.boat.x=keep.startX; G.boat.y=keep.startY;
+    G.boat.heading=Math.atan2(keep.way[1].y-keep.startY, keep.way[1].x-keep.startX);
+    G.timeMax=keep.timeMax; G.time=keep.timeMax;
+    broadcast(true);
+  }
+  function deliverShip(){
+    delivered++; streak++;
+    const milestone = delivered%5===0;
+    const record = delivered>bestRun;
+    if(record){ bestRun=delivered; newRecord=true; try{ localStorage.setItem('beacon_best', bestRun); }catch(e){} }
+    // warmest line that applies
+    let message = PRAISE[Math.floor(Math.random()*PRAISE.length)];
+    if(record && delivered>1) message='🌟 NEW RECORD — '+delivered+' ships!';
+    else if(milestone) message='🏆 '+delivered+' ships — harbour legends!';
+    else if(streak>=3) message='🔥 '+streak+' in a row!';
+    const { helmId, radarId } = roleIds();
+    const hn=(roster.get(helmId)||{}).name, rn=(roster.get(radarId)||{}).name;
+    const sub = (hn&&rn) ? (hn+' & '+rn+' — '+delivered+' home') : (delivered+' ship'+(delivered===1?'':'s')+' home');
+    celebrate = { count:delivered, streak, milestone, record, message, sub, nextLeg:legIndex+2 };
+    bannerT = 0;   // clear any lingering banner so the celebration card is clean
+    // celebratory music
+    SFX.dockbell();
+    if(record && delivered>1) SFX.record(); else if(milestone) SFX.milestone(); else SFX.fanfare(streak);
+    setTimeout(()=>SFX.sparkle(), 260);
+    // visuals: confetti rain + fireworks at the harbour, and dock the ship in
+    spawnConfetti(milestone?220:150); spawnFirework(G.harborCx, HARBOR_Y); harborGlow=1;
+    G.boat.turn=0; G.boat.throttle=0; G.dock={ tx:G.harborCx, ty:HARBOR_Y-34 };
+    phase='arrived'; arriveEndsAt=performance.now()+ARRIVE_DUR*1000;
+    broadcast(true);
+  }
+  function advanceFromArrived(){
+    if(activePair().length<2 && !DEV){ gameOver(); return; }
+    celebrate=null; startLeg(legIndex+1);
+  }
+  function gameOver(){
+    phase='over';
+    if(delivered>=4 || newRecord){ SFX.cheer(); spawnConfetti(160); } else SFX.gameover();
+    showCard(); broadcast(true);
+  }
+  function toLobby(){ phase='lobby'; G=null; showOverlay('lobby'); hideOverlay('card'); renderLobby(); broadcast(true); }
+
+  // ---------- input ----------
+  function applyInput(id,type,payload){
+    if(type==='selectGame'){ if(id===roomLeaderId()){ const g=payload&&payload.game; location.href = g==='cannons'?'/couch?room='+ROOM : g==='frogger'?'/frogger?room='+ROOM : g==='poltergeist'?'/poltergeist?room='+ROOM : g==='beacon'?'/beacon?room='+ROOM : g==='tandem'?'/tandem?room='+ROOM : g==='glade'?'/glade?room='+ROOM : '/?room='+ROOM; } return; }
+    if(type==='start'){ if(phase==='lobby' && id===roomLeaderId()) newMatch(); return; }
+    if(type==='rematch'){ if(phase==='over' && id===roomLeaderId()){ roleSwap=!roleSwap; newMatch(); } return; }
+    if(phase!=='playing' || !G) return;
+    const { helmId, radarId } = roleIds();
+    if(type==='bsteer'){ if(id!==helmId) return;
+      G.boat.turn = clamp(+payload.turn||0, -1, 1);
+      if(typeof payload.throttle==='number') G.boat.throttle = clamp(payload.throttle,0,1);
+      return; }
+    if(type==='bping'){ if(id!==radarId) return;
+      const nx=clamp(+payload.nx||0,0,1), ny=clamp(+payload.ny||0,0,1);
+      G.ping={ x:nx*W, y:ny*H, life:1 }; SFX.ping(); return; }
+  }
+
+  // ---------- simulation ----------
+  function stepPlay(dt){
+    if(!DEV && activePair().length<2){ banner={text:'Lost a pilot…',color:'#ff5470'}; bannerT=1; gameOver(); return; }
+    const b=G.boat;
+    // steer + move
+    b.heading += b.turn * TURN_RATE * dt;
+    const sp = b.throttle * MAX_SPEED;
+    b.x += Math.cos(b.heading)*sp*dt;
+    b.y += Math.sin(b.heading)*sp*dt;
+    b.x = clamp(b.x, BOAT_R, W-BOAT_R); b.y = clamp(b.y, BOAT_R, H-BOAT_R);
+    // wake trail
+    b.wake.push({x:b.x, y:b.y, life:1}); if(b.wake.length>60) b.wake.shift();
+    for(const w of b.wake) w.life -= dt*0.6; b.wake=b.wake.filter(w=>w.life>0);
+    // mines drift + bounce
+    for(const m of G.mines){
+      m.x+=m.vx*dt; m.y+=m.vy*dt;
+      if(m.x<120||m.x>W-120) m.vx*=-1; if(m.y<HARBOR_Y+60||m.y>H-90) m.vy*=-1;
+      m.x=clamp(m.x,120,W-120); m.y=clamp(m.y,HARBOR_Y+60,H-90);
+    }
+    // ping / boom / shake decay
+    if(G.ping){ G.ping.life-=dt*0.5; if(G.ping.life<=0) G.ping=null; }
+    if(G.boom){ G.boom.life-=dt*1.5; if(G.boom.life<=0) G.boom=null; }
+    G.shake=Math.max(0,G.shake-dt*2.2);
+    // timer
+    G.time -= dt;
+    if(G.time<=8 && SFX.state()==='running'){ const now=performance.now(); if(now-lastWarn>900){ lastWarn=now; SFX.warn(); } }
+    if(G.time<=0){ loseLife('Ran aground — out of time!'); return; }
+    // collisions
+    for(const r of G.rocks){ if(Math.hypot(b.x-r.x,b.y-r.y) < r.r+BOAT_R){ loseLife('Smashed on the rocks!'); return; } }
+    for(const m of G.mines){ if(Math.hypot(b.x-m.x,b.y-m.y) < m.r+BOAT_R){ loseLife('Hit a drifting mine!'); return; } }
+    // reached harbor?
+    if(b.y < HARBOR_Y && Math.abs(b.x-G.harborCx) < GAP/2 - 10){ deliverShip(); return; }
+    if(bannerT>0) bannerT-=dt;
+  }
+
+  // ---------- broadcast ----------
+  function publicState(){
+    const { helmId, radarId } = roleIds();
+    const hp = id => { const p=roster.get(id); return p?p.name:''; };
+    return {
+      game:'beacon', phase, helmId, radarId,
+      helmName: hp(helmId), radarName: hp(radarId),
+      delivered, lives, leg:legIndex+1, streak, best:bestRun, newRecord,
+      celebrate: phase==='arrived' ? celebrate : null,
+      time: G?Math.max(0,G.time):0, timeMax: G?G.timeMax:1,
+      throttle: G?G.boat.throttle:0,
+      players: [...roster.values()].map(p=>({id:p.id,name:p.name,color:p.color,connected:p.connected})),
+    };
+  }
+  function radarPayload(){
+    const b=G.boat;
+    return {
+      W, H, harborY:HARBOR_Y, gap:GAP, harborCx:Math.round(G.harborCx),
+      boat:{ x:Math.round(b.x), y:Math.round(b.y), heading:+b.heading.toFixed(3) },
+      rocks: G.rocks.map(r=>({x:Math.round(r.x),y:Math.round(r.y),r:Math.round(r.r)})),
+      mines: G.mines.map(m=>({x:Math.round(m.x),y:Math.round(m.y),r:m.r})),
+      ping: G.ping?{x:Math.round(G.ping.x),y:Math.round(G.ping.y)}:null,
+      time: Math.max(0,G.time), timeMax:G.timeMax,
+    };
+  }
+  function broadcast(force){
+    const now=performance.now();
+    if(!force && now-lastBroadcast<55) return;
+    lastBroadcast=now;
+    socket.emit('host:state', publicState());
+    if(phase==='playing' && G){ const { radarId }=roleIds(); if(radarId!=null) socket.emit('host:to', { id:radarId, payload:radarPayload() }); }
+  }
+
+  // ---------- socket wiring ----------
+  socket.on('connect', ()=> socket.emit('host:hello', { code: ROOM || null }));
+  socket.on('host:roster', (arr)=>{ roster.clear(); arr.forEach(p=>roster.set(p.id,{...p})); renderLobby(); broadcast(true); });
+  socket.on('host:playerJoined', (p)=>{ roster.set(p.id,{...p,connected:true}); renderLobby(); broadcast(true); });
+  socket.on('host:playerLeft', ({id})=>{ const r=roster.get(id); if(r) r.connected=false; renderLobby(); broadcast(true); });
+  socket.on('host:input', ({id,type,payload})=> applyInput(id,type,payload||{}));
+
+  const $=(id)=>document.getElementById(id);
+  function showOverlay(id){ $(id).classList.add('show'); }
+  function hideOverlay(id){ $(id).classList.remove('show'); }
+
+  socket.on('host:room', ({code, joinUrl})=>{
+    document.querySelectorAll('.homelink').forEach(a=> a.setAttribute('href','/?room='+code));
+    $('roomCode').textContent=code;
+    const full=joinUrl+'?room='+code;
+    $('joinUrl').textContent=full.replace(/^https?:\/\//,'');
+    $('qr').innerHTML=''; try{ new QRCode($('qr'),{text:full,width:128,height:128,correctLevel:QRCode.CorrectLevel.M}); }catch(e){ $('qr').textContent='QR'; }
+  });
+
+  function renderLobby(){
+    const list=$('rlist'), players=[...roster.values()];
+    const { helmId, radarId } = roleIds();
+    if(!players.length){ list.innerHTML='<div class="empty-hint">No one\'s joined yet…</div>'; }
+    else { list.innerHTML=''; players.forEach(p=>{ const el=document.createElement('div'); el.className='pill'+(p.connected?'':' off');
+      const role = p.id===helmId?'HELM 🛞':(p.id===radarId?'RADAR 📡':'watching');
+      el.innerHTML=`<i style="background:${p.color};color:${p.color}"></i>${p.name}<span class="tagr">${role}</span>`; list.appendChild(el); }); }
+    const c=players.filter(p=>p.connected).length;
+    $('startcue').textContent = c>=2 ? 'First player: tap START on your phone ⟶' : 'Beacon needs 2 pilots — get one more phone in…';
+    if(phase==='lobby') showOverlay('lobby');
+  }
+  function showCard(){
+    $('cardBig').textContent = newRecord ? '🌟 NEW RECORD!' : '⚓ Voyage over';
+    $('cardBig').style.color = (newRecord||delivered>0) ? '#34d399' : '#fff';
+    $('cardSub').textContent = delivered>=8 ? 'Legendary piloting — the harbour master salutes you.' : delivered>=4 ? 'A fine night\'s work guiding ships home.' : delivered>0 ? 'Every ship counts. Swap roles and run it back!' : 'The rocks are unforgiving. Take the helm again!';
+    $('cardStat').innerHTML = `${delivered} ship${delivered===1?'':'s'} brought home safely`
+      + `<br><span style="font-size:20px;color:#8aa0bf;font-family:Inter;font-weight:800">⭐ Best: ${bestRun}</span>`;
+    showOverlay('card');
+  }
+
+  // ---------- render ----------
+  let waveT=0;
+  function drawSea(){
+    const g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#06243a'); g.addColorStop(0.5,'#04162a'); g.addColorStop(1,'#020c1c');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle='rgba(120,180,230,0.05)'; ctx.lineWidth=2;
+    for(let y=HARBOR_Y+40; y<H; y+=70){ ctx.beginPath();
+      for(let x=0;x<=W;x+=40){ const yy=y+Math.sin((x*0.012)+waveT+y)*5; if(x===0) ctx.moveTo(x,yy); else ctx.lineTo(x,yy); } ctx.stroke(); }
+  }
+  function drawHarbor(){
+    const hcx=(G&&G.harborCx)||W/2;
+    const gx0=hcx-GAP/2, gx1=hcx+GAP/2;
+    // jetties
+    ctx.fillStyle='#0b1830';
+    ctx.fillRect(0,0,gx0,HARBOR_Y); ctx.fillRect(gx1,0,W-gx1,HARBOR_Y);
+    ctx.fillStyle='#13284a'; ctx.fillRect(0,HARBOR_Y-14,gx0,14); ctx.fillRect(gx1,HARBOR_Y-14,W-gx1,14);
+    // safe-water glow in the gap
+    const gg=ctx.createLinearGradient(0,0,0,HARBOR_Y+120); gg.addColorStop(0,'rgba(52,211,153,0.30)'); gg.addColorStop(1,'rgba(52,211,153,0)');
+    ctx.fillStyle=gg; ctx.fillRect(gx0,0,GAP,HARBOR_Y+120);
+    // harbor lamps
+    for(const lx of [gx0, gx1]){ ctx.save(); ctx.globalCompositeOperation='lighter';
+      const r=ctx.createRadialGradient(lx,HARBOR_Y-8,2,lx,HARBOR_Y-8,60); r.addColorStop(0,'rgba(52,255,180,0.9)'); r.addColorStop(1,'rgba(52,255,180,0)');
+      ctx.fillStyle=r; ctx.beginPath(); ctx.arc(lx,HARBOR_Y-8,60,0,7); ctx.fill(); ctx.restore(); }
+    // lighthouse with a slow cosmetic sweep
+    const lhx=hcx, lhy=HARBOR_Y-40, sweep=(performance.now()/2600)%(Math.PI*2);
+    ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.translate(lhx,lhy);
+    const beam=ctx.createRadialGradient(0,0,4,0,0,900); beam.addColorStop(0,'rgba(255,236,170,0.22)'); beam.addColorStop(1,'rgba(255,236,170,0)');
+    ctx.fillStyle=beam; ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,900,sweep-0.16,sweep+0.16); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.font='800 22px Inter'; ctx.fillStyle='#8aa0bf'; ctx.textAlign='center'; ctx.fillText('⚓ HARBOR', hcx, HARBOR_Y-54);
+  }
+  function drawBoat(){
+    const b=G.boat;
+    ctx.save(); ctx.globalCompositeOperation='lighter';
+    for(const w of b.wake){ ctx.fillStyle=`rgba(150,210,255,${w.life*0.28})`; ctx.beginPath(); ctx.arc(w.x,w.y,7*(1.4-w.life)+3,0,7); ctx.fill(); }
+    ctx.restore();
+    ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(b.heading);
+    // glow
+    ctx.save(); ctx.globalCompositeOperation='lighter';
+    const gl=ctx.createRadialGradient(0,0,2,0,0,40); gl.addColorStop(0,'rgba(255,220,140,0.5)'); gl.addColorStop(1,'rgba(255,220,140,0)');
+    ctx.fillStyle=gl; ctx.beginPath(); ctx.arc(0,0,40,0,7); ctx.fill(); ctx.restore();
+    // hull (points along heading)
+    ctx.fillStyle='#f4e8c8'; ctx.strokeStyle='#caa45a'; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(26,0); ctx.lineTo(-14,-14); ctx.lineTo(-8,0); ctx.lineTo(-14,14); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#ff5470'; ctx.fillRect(-2,-4,8,8); // lantern
+    ctx.restore();
+    // heading arrow so the helm reads orientation through the fog
+    ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(b.heading);
+    ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(30,0); ctx.lineTo(58,0); ctx.lineTo(50,-7); ctx.moveTo(58,0); ctx.lineTo(50,7); ctx.stroke(); ctx.restore();
+  }
+  function drawPing(){
+    if(!G.ping) return; const p=G.ping, t=performance.now()/300;
+    ctx.save(); ctx.globalCompositeOperation='lighter';
+    for(let i=0;i<3;i++){ const rr=24+((t+i)%3)*40; ctx.strokeStyle=`rgba(255,209,102,${p.life*(1-((t+i)%3)/3)*0.8})`; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(p.x,p.y,rr,0,7); ctx.stroke(); }
+    ctx.restore();
+    ctx.fillStyle=`rgba(255,209,102,${p.life})`; ctx.font='900 20px Anton, Inter'; ctx.textAlign='center'; ctx.fillText('STEER HERE', p.x, p.y-40);
+  }
+  function drawBoom(){
+    if(!G.boom) return; const b=G.boom; ctx.save(); ctx.globalCompositeOperation='lighter';
+    const r=ctx.createRadialGradient(b.x,b.y,2,b.x,b.y,90*(1.3-b.life)); r.addColorStop(0,`rgba(255,180,90,${b.life})`); r.addColorStop(0.5,`rgba(255,90,80,${b.life*0.6})`); r.addColorStop(1,'rgba(255,90,80,0)');
+    ctx.fillStyle=r; ctx.beginPath(); ctx.arc(b.x,b.y,90*(1.3-b.life),0,7); ctx.fill(); ctx.restore();
+  }
+  function drawFog(){
+    // heavy sea-fog: the helm genuinely can't see the rocks
+    const f=ctx.createRadialGradient(W/2,H*0.55,H*0.18,W/2,H*0.55,H*0.95);
+    f.addColorStop(0,'rgba(150,170,190,0.04)'); f.addColorStop(0.6,'rgba(140,160,185,0.16)'); f.addColorStop(1,'rgba(120,140,170,0.4)');
+    ctx.fillStyle=f; ctx.fillRect(0,0,W,H);
+    const v=ctx.createRadialGradient(W/2,H/2,H*0.35,W/2,H/2,H*0.9);
+    v.addColorStop(0,'rgba(0,0,0,0)'); v.addColorStop(1,'rgba(0,0,0,0.55)');
+    ctx.fillStyle=v; ctx.fillRect(0,0,W,H);
+  }
+  function fmt(s){ s=Math.max(0,Math.ceil(s)); return s+'s'; }
+  function drawHUD(){
+    ctx.textAlign='left'; ctx.fillStyle='#8aa0bf'; ctx.font='800 26px Inter';
+    ctx.fillText(`LEG ${legIndex+1}`, 40, 56);
+    ctx.font='900 30px Anton, Inter'; ctx.fillStyle='#7dd3fc'; ctx.textAlign='left';
+    ctx.fillText(`⚓ ${delivered} delivered`, 40, 92);
+    // lives
+    ctx.textAlign='right'; ctx.font='900 30px Anton, Inter'; ctx.fillStyle='#ff5470';
+    ctx.fillText('❤'.repeat(Math.max(0,lives))+'·'.repeat(Math.max(0,LIVES-lives)), W-40, 56);
+    // role reminder
+    const { helmName, radarName } = publicState();
+    ctx.textAlign='right'; ctx.font='800 20px Inter'; ctx.fillStyle='#8aa0bf';
+    ctx.fillText(`🛞 ${helmName||'—'}  ·  📡 ${radarName||'—'}`, W-40, 88);
+    // timer bar
+    const bw=620, bx=W/2-bw/2, by=44, bh=18, tr=clamp(G.time/G.timeMax,0,1);
+    ctx.fillStyle='rgba(255,255,255,0.08)'; roundRect(bx,by,bw,bh,9); ctx.fill();
+    ctx.fillStyle = tr<0.3?'#ff5470':(tr<0.6?'#fbbf24':'#34d399'); roundRect(bx,by,Math.max(6,bw*tr),bh,9); ctx.fill();
+    ctx.fillStyle='#cbd5e1'; ctx.font='800 14px Inter'; ctx.textAlign='center'; ctx.fillText('TIME TO HARBOR  '+fmt(G.time), W/2, by+bh+18);
+  }
+  function drawBanner(){
+    if(bannerT<=0 || !banner) return;
+    const a=clamp(bannerT,0,1);
+    ctx.save(); ctx.globalAlpha=a; ctx.textAlign='center';
+    ctx.font='900 76px Anton, Inter'; ctx.fillStyle=banner.color;
+    ctx.fillText(banner.text, W/2, H/2); ctx.restore();
+  }
+  function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  // ---------- dev/test mode (only with ?dev=1) ----------
+  function corridorAt(idx){ return Math.round(Math.max(118, 196 - idx*11)); }
+  function drawDevHazards(){
+    // reveal what the Radar sees: the rock field + the safe corridor the Helm must thread
+    ctx.strokeStyle='rgba(120,255,180,0.45)'; ctx.lineWidth=corridorAt(legIndex)*2; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath(); G.way.forEach((w,i)=> i?ctx.lineTo(w.x,w.y):ctx.moveTo(w.x,w.y)); ctx.stroke();
+    for(const r of G.rocks){ ctx.fillStyle='rgba(255,90,80,0.6)'; ctx.beginPath(); ctx.arc(r.x,r.y,r.r,0,7); ctx.fill();
+      ctx.strokeStyle='rgba(255,170,150,0.8)'; ctx.lineWidth=2; ctx.stroke(); }
+    for(const m of G.mines){ ctx.fillStyle='#ff1e5a'; ctx.beginPath(); ctx.arc(m.x,m.y,m.r,0,7); ctx.fill();
+      ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); }
+    ctx.fillStyle='#fff'; ctx.font='900 34px Anton, Inter'; ctx.textAlign='center';
+    ctx.fillText(`DEV · LEG ${legIndex+1}  ·  ${G.rocks.length} rocks  ·  corridor ${corridorAt(legIndex)}px  ·  ${G.mines.length} mines  ·  ${Math.round(G.timeMax)}s`, W/2, H-28);
+  }
+  if(DEV){
+    window.__setLeg=(n)=>{ legIndex=Math.max(0,n|0); G=genLeg(legIndex); G.boat.throttle=0; phase='playing';
+      banner={text:'LEG '+(legIndex+1),color:'#fbbf24'}; bannerT=1.2; hideOverlay('lobby'); hideOverlay('card'); broadcast(true);
+      return window.__legInfo(); };
+    window.__legInfo=()=> G?{ leg:legIndex+1, rocks:G.rocks.length, mines:G.mines.length, corridor:corridorAt(legIndex), seconds:Math.round(G.timeMax) }:null;
+    // bot observation hook — full board for test agents (real phones never get this)
+    window.__obs=()=> ({ phase, leg:legIndex, lives, delivered, streak, best:bestRun, W, H, harborY:HARBOR_Y, gap:GAP,
+      time:G?G.time:0, boat:G?{x:G.boat.x,y:G.boat.y,heading:G.boat.heading}:null,
+      rocks:G?G.rocks:[], mines:G?G.mines:[] });
+    window.__win=()=>{ if(G){ if(phase!=='playing') phase='playing'; deliverShip(); } return celebrate; };  // trigger the delivery cutscene
+    window.__end=()=>{ lives=1; if(G) loseLife('test'); };
+  }
+
+  // ---------- celebration: confetti, fireworks, docking cutscene ----------
+  const CONF_COLORS=['#fbbf24','#34d399','#38bdf8','#fb7185','#f472b6','#a78bfa','#ffffff','#7dd3fc'];
+  function spawnConfetti(n){
+    const cx=(G?G.harborCx:W/2);
+    for(let i=0;i<n;i++) confetti.push({
+      x:cx+(Math.random()-0.5)*GAP*1.5, y:HARBOR_Y-20+(Math.random()-0.5)*50,
+      vx:(Math.random()-0.5)*300, vy:-110-Math.random()*300,
+      g:430+Math.random()*240, rot:Math.random()*7, vr:(Math.random()-0.5)*12,
+      w:8+Math.random()*8, h:5+Math.random()*7, col:CONF_COLORS[(Math.random()*CONF_COLORS.length)|0], life:1.4+Math.random()*1.6 });
+  }
+  function spawnFirework(x,y){
+    fireworks.push({x,y,r:8,spd:560,life:1,col:CONF_COLORS[(Math.random()*CONF_COLORS.length)|0]});
+    for(let i=1;i<=2;i++) setTimeout(()=>{ if(phase==='arrived'||phase==='over') fireworks.push({x:x+(Math.random()-0.5)*GAP, y:y-20+(Math.random()-0.5)*70, r:6, spd:460+Math.random()*180, life:1, col:CONF_COLORS[(Math.random()*CONF_COLORS.length)|0]}); }, 320*i);
+  }
+  function updateParticles(dt){
+    for(const p of confetti){ p.vy+=p.g*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.rot+=p.vr*dt; p.vx*=(1-0.6*dt); p.life-=dt*0.5; }
+    confetti=confetti.filter(p=>p.life>0 && p.y<H+50);
+    for(const f of fireworks){ f.r+=f.spd*dt; f.life-=dt*1.1; }
+    fireworks=fireworks.filter(f=>f.life>0);
+    if(harborGlow>0) harborGlow=Math.max(0, harborGlow-dt*0.55);
+  }
+  function drawParticles(){
+    for(const f of fireworks){ ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=Math.max(0,f.life);
+      ctx.strokeStyle=f.col; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(f.x,f.y,f.r,0,7); ctx.stroke(); ctx.restore(); }
+    for(const p of confetti){ ctx.save(); ctx.globalAlpha=clamp(p.life,0,1); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      ctx.fillStyle=p.col; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); }
+  }
+  function updateArrived(dt){
+    const b=G.boat, d=G.dock;
+    if(d){ b.x+=(d.tx-b.x)*Math.min(1,dt*2.2); b.y+=(d.ty-b.y)*Math.min(1,dt*2.2);
+      b.heading += (-Math.PI/2 - b.heading)*Math.min(1,dt*2.5); }
+    if(G.boom){ G.boom.life-=dt*1.5; if(G.boom.life<=0) G.boom=null; }
+    if(Math.random()<dt*2.4) spawnFirework(G.harborCx + (Math.random()-0.5)*GAP, HARBOR_Y-10);
+    if(performance.now()>=arriveEndsAt) advanceFromArrived();
+  }
+  function drawArrived(){
+    if(!celebrate) return;
+    const pw=940, ph=290, px=W/2-pw/2, py=H*0.40-ph/2;
+    ctx.save();
+    ctx.fillStyle='rgba(4,12,22,0.82)'; roundRect(px,py,pw,ph,26); ctx.fill();
+    ctx.strokeStyle='rgba(52,211,153,0.55)'; ctx.lineWidth=3; roundRect(px,py,pw,ph,26); ctx.stroke();
+    ctx.textAlign='center';
+    ctx.fillStyle='#34d399'; ctx.font='900 58px Anton, Inter'; ctx.fillText('⚓ SHIP DELIVERED!', W/2, py+82);
+    ctx.fillStyle=celebrate.record?'#ffd166':'#ffe9a8'; ctx.font='900 40px Anton, Inter'; ctx.fillText(celebrate.message, W/2, py+144);
+    ctx.fillStyle='#cfe0f0'; ctx.font='800 26px Inter'; ctx.fillText(celebrate.sub, W/2, py+190);
+    const left=Math.max(0,(arriveEndsAt-performance.now())/1000);
+    ctx.fillStyle='#8aa0bf'; ctx.font='800 22px Inter'; ctx.fillText('Leg '+celebrate.nextLeg+' in '+Math.ceil(left)+'…', W/2, py+238);
+    ctx.restore();
+  }
+  function drawLegIntro(){
+    const a=clamp(legIntroT/2,0,1);
+    ctx.save(); ctx.globalAlpha=a*0.95; ctx.textAlign='center';
+    ctx.fillStyle='#7dd3fc'; ctx.font='900 76px Anton, Inter';
+    ctx.fillText('LEG '+legIntroN, W/2, H*0.30);
+    ctx.restore();
+  }
+
+  let last=performance.now();
+  function loop(now){
+    const dt=Math.min(0.05,(now-last)/1000); last=now; waveT+=dt*0.6;
+    if(phase==='playing' && G){ stepPlay(dt); broadcast(false); }
+    else if(phase==='arrived' && G){ updateArrived(dt); broadcast(false); }
+    if(legIntroT>0) legIntroT-=dt;
+    updateParticles(dt);
+    ctx.clearRect(0,0,W,H);
+    ctx.save();
+    if(G && G.shake>0){ ctx.translate((Math.random()-0.5)*18*G.shake,(Math.random()-0.5)*18*G.shake); }
+    drawSea();
+    if(G){
+      drawHarbor();
+      drawPing();
+      drawBoat();
+      drawBoom();
+      if(phase!=='arrived') drawFog();          // lift the fog for the celebration
+      if(DEV) drawDevHazards();
+      drawParticles();
+      if(phase==='playing') drawHUD();
+      if(phase==='arrived') drawArrived();
+      if(legIntroT>0) drawLegIntro();
+      if(phase!=='arrived') drawBanner();
+    } else {
+      drawHarbor(); drawFog(); drawParticles();
+    }
+    ctx.restore();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ---------- attract / bot mode (?demo or ?bots) ----------
+  // Spins up two AI "phones" so the run plays itself — watch the co-op with no real
+  // players. The Helm bot threads the channel with a steering-behaviour navigator
+  // (attracted to the harbour, repelled by rocks/mines); the Radar bot drops pings.
+  // Completely inert unless ?demo / ?bots is in the URL.
+  (function botMode(){
+    const q=new URLSearchParams(location.search);
+    if(!q.has('demo') && !q.has('bots')) return;
+    const P={ kA:1.0, kR:1.35, look:158, kP:2.6, thrBase:0.64, thrTurn:0.46 };  // tuned navigator
+    const ang=a=>Math.atan2(Math.sin(a),Math.cos(a));
+    let bots=null;
+    socket.on('host:room', ({code})=>{
+      if(bots) return; bots=[];
+      for(let i=0;i<2;i++){ const s=io(), o={s,id:null}; s.on('ctrl:joined',m=>o.id=m.id);
+        setTimeout(()=> s.emit('ctrl:join',{ name:i?'RadarBot':'HelmBot', token:'bdemo-'+i+'-'+Math.random().toString(36).slice(2), color:i?'#34D399':'#60A5FA', code }), 140*i);
+        bots.push(o); }
+      setTimeout(()=> bots[0] && bots[0].s.emit('ctrl:start'), 1300);
+      setInterval(()=>{
+        if(phase==='over'){ bots[0] && bots[0].s.emit('ctrl:rematch'); return; }
+        if(phase!=='playing' || !G) return;
+        const b=G.boat, tx=G.harborCx, ty=HARBOR_Y-10;
+        let ax=tx-b.x, ay=ty-b.y; const ad=Math.hypot(ax,ay)||1; ax/=ad; ay/=ad;
+        let rx=0, ry=0;
+        for(const r of G.rocks.concat(G.mines)){ const dx=b.x-r.x, dy=b.y-r.y, d=Math.hypot(dx,dy), reach=r.r+P.look;
+          if(d<reach && d>0.1){ const w=(reach-d)/reach; rx+=dx/d*w; ry+=dy/d*w; } }
+        const desired=Math.atan2(ay*P.kA+ry*P.kR, ax*P.kA+rx*P.kR);
+        const err=ang(desired-b.heading), turn=Math.max(-1,Math.min(1,err*P.kP));
+        let thr=P.thrBase-Math.abs(err)*P.thrTurn; if(ad<200) thr*=0.7; thr=Math.max(0.16,Math.min(0.9,thr));
+        const {helmId,radarId}=roleIds();
+        const hb=bots.find(x=>x.id===helmId), rb=bots.find(x=>x.id===radarId);
+        if(hb) hb.s.emit('ctrl:bsteer',{turn,throttle:thr});
+        if(rb) rb.s.emit('ctrl:bping',{nx:G.harborCx/W,ny:(HARBOR_Y-10)/H});
+      }, 90);
+    });
+  })();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Poltergeist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@600;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{ --ink:#e9e7ff; --muted:#9a93b5; --teal:#22d3ee; --indigo:#6366f1; --ecto:#7df9d0; --danger:#ff5470; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#04040a;overflow:hidden;font-family:'Inter',system-ui,sans-serif;color:var(--ink);}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
+  canvas{width:min(100vw, calc(100vh * 16 / 9));height:auto;display:block;background:#04040a;}
+
+  .overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:20;}
+  .overlay.show{display:flex;}
+
+  /* ---- Lobby ---- */
+  #lobby{background:radial-gradient(120% 90% at 50% -5%, #1b1740 0%, #04040a 62%);}
+  .lobby-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:48px;width:min(1180px,90vw);align-items:center;}
+  .title{font-family:'Anton',sans-serif;font-size:clamp(50px,9vw,128px);line-height:.84;margin:0;letter-spacing:1px;
+    background:linear-gradient(90deg,#a5b4fc,#22d3ee 60%,#7df9d0);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 34px rgba(99,102,241,.5));}
+  .ghosticon{font-size:clamp(40px,7vw,92px);filter:drop-shadow(0 0 22px rgba(125,249,208,.55));}
+  .tag{color:var(--muted);font-size:clamp(15px,1.5vw,21px);font-weight:700;margin:16px 0 26px;max-width:42ch;line-height:1.55;}
+  .joinbox{display:flex;align-items:center;gap:22px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:22px;padding:22px;}
+  #qr{width:148px;height:148px;background:#fff;border-radius:14px;padding:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;}
+  .joininfo .k{font-size:13px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);font-weight:800;}
+  .joininfo .url{font-family:'Anton',sans-serif;font-size:clamp(22px,2.4vw,34px);margin:4px 0 14px;}
+  .joininfo .code{display:inline-block;font-family:'Anton',sans-serif;font-size:34px;letter-spacing:8px;background:var(--teal);color:#06222a;padding:4px 16px;border-radius:12px;}
+  .roster{display:flex;flex-direction:column;gap:12px;}
+  .roster h2{font-family:'Anton',sans-serif;font-size:24px;margin:0 0 6px;color:var(--muted);letter-spacing:2px;}
+  .rlist{display:flex;flex-direction:column;gap:10px;min-height:60px;}
+  .pill{display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.05);border-radius:14px;padding:12px 16px;font-size:22px;font-weight:800;}
+  .pill i{width:22px;height:22px;border-radius:7px;flex:0 0 auto;box-shadow:0 0 14px currentColor;}
+  .pill.off{opacity:.4;}
+  .empty-hint{color:var(--muted);font-weight:700;font-size:18px;padding:8px 2px;}
+  .startcue{margin-top:18px;color:var(--ecto);font-weight:800;font-size:18px;min-height:24px;}
+
+  /* ---- Intermission / Over card ---- */
+  #card{background:rgba(4,4,10,.82);backdrop-filter:blur(4px);flex-direction:column;gap:14px;text-align:center;}
+  #card .big{font-family:'Anton',sans-serif;font-size:clamp(40px,7vw,92px);margin:0;line-height:.95;}
+  #card .sub{color:var(--muted);font-weight:800;font-size:22px;}
+  #card .stand{display:flex;flex-direction:column;gap:8px;margin-top:8px;min-width:340px;}
+  #card .row{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.05);border-radius:12px;padding:9px 16px;font-weight:800;font-size:21px;}
+  #card .row i{width:18px;height:18px;border-radius:5px;box-shadow:0 0 10px currentColor;}
+  #card .row .pts{margin-left:auto;font-family:'Anton',sans-serif;font-size:24px;}
+  #card .row.win{box-shadow:0 0 0 2px var(--ecto);}
+
+  .homelink{position:fixed;bottom:14px;left:16px;z-index:30;color:#e9e7ff;text-decoration:none;font-weight:900;font-size:14px;background:rgba(0,0,0,.5);padding:8px 14px;border-radius:10px;}
+  .homelink:hover{background:rgba(0,0,0,.8);}
+  #soundgate{position:fixed;bottom:14px;right:16px;z-index:30;cursor:pointer;background:rgba(0,0,0,.6);color:#fff;font-weight:800;font-size:14px;padding:9px 15px;border-radius:12px;border:1px solid rgba(255,255,255,.28);box-shadow:0 3px 12px rgba(0,0,0,.45);animation:sgpulse 1.6s ease-in-out infinite;}
+  @keyframes sgpulse{0%,100%{transform:scale(1);opacity:.92;}50%{transform:scale(1.05);opacity:1;}}
+</style>
+</head>
+<body>
+<a class="homelink" href="/">← Games</a>
+<div id="soundgate">🔊 Click anywhere to turn on sound</div>
+<div id="stage"><canvas id="cv" width="1920" height="1080"></canvas></div>
+
+<!-- LOBBY -->
+<div id="lobby" class="overlay show">
+  <div class="lobby-grid">
+    <div>
+      <h1 class="title">POLTER<br>GEIST</h1>
+      <p class="tag"><span class="ghosticon">👻</span> One player becomes the <b>invisible ghost</b> — only their phone knows where it is. Everyone else hunts it with flashlights on this screen. Stay out of the light, leave only fading footprints. <b>6+ players → two ghosts haunt at once.</b> Rounds rotate so everyone gets a turn.</p>
+      <div class="joinbox">
+        <div id="qr"></div>
+        <div class="joininfo">
+          <div class="k">On your phone, open</div>
+          <div class="url" id="joinUrl">loading…</div>
+          <div class="k">Room code</div><br>
+          <span class="code" id="roomCode">····</span>
+        </div>
+      </div>
+    </div>
+    <div class="roster">
+      <h2>SPIRITS &amp; HUNTERS</h2>
+      <div class="rlist" id="rlist"><div class="empty-hint">No one's joined yet…</div></div>
+      <div class="startcue" id="startcue"></div>
+    </div>
+  </div>
+</div>
+
+<!-- INTERMISSION / GAME OVER -->
+<div id="card" class="overlay">
+  <div class="big" id="cardBig">—</div>
+  <div class="sub" id="cardSub"></div>
+  <div class="stand" id="cardStand"></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@gh-pages/qrcode.min.js"></script>
+<script>
+(function(){
+  "use strict";
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  let W = cv.width, H = cv.height;          // world size — grows with player count (zoom-to-fit on the TV)
+  const socket = io();
+  const ROOM = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
+
+  // ---------- tunables ----------
+  const MARGIN = 58;
+  let ARENA = { x0:MARGIN, y0:96, x1:W-MARGIN, y1:H-MARGIN };      // a big haunted room (rebuilt per round)
+  const GHOST_SPEED = 410;       // px / sec
+  const ROUND_SECONDS = 80;
+  const HALF = 0.40, METER_HALF = 0.64;                            // torch cone width
+  const STATION_INSET = 0.66;    // hunters stand on a ring this far toward the walls
+  const GHOSTS_AT = 6;           // a 2nd ghost joins once the room has this many players
+  function reachFor(n){ return clamp(1050 - (n-1)*58, 690, 1050); } // shorter torches as more hunters join
+  // Map size + furniture scale up with the hunter count (calibrated in sim/balance.js):
+  // more hunters can track + surround, so the ghosts get a bigger, more cluttered room.
+  function arenaScaleFor(nH){ return clamp(0.96 + 0.06*(nH-1), 0.96, 1.22); }
+  function furnitureFor(nH){ return clamp(Math.round(6 + 1.6*(nH-1)), 6, 16); }
+  function applyArenaScale(s){
+    W = Math.round(1920*s); H = Math.round(1080*s);
+    cv.width = W; cv.height = H;                 // canvas keeps 16:9 → CSS auto-fits it to the TV
+    if (typeof _layer !== 'undefined' && _layer) { _layer.width = W; _layer.height = H; }
+    ARENA = { x0:MARGIN*s, y0:96*s, x1:W-MARGIN*s, y1:H-96*s };
+  }
+  const DECAY = 20;              // exposure lost per sec in the dark
+  const FLASH_CD = 3.0, FLASH_DUR = 0.45, FLASH_BURST = 22, FLASH_REACH = 1.15;
+  const SCARE_CD = 9.0, SCARE_RADIUS = 560, STUN_DUR = 1.6, REVEAL_DUR = 0.45;
+  const GHOST_R = 15, CAUGHT = 100, INTERMISSION = 5.0;
+  const FLICK_PERIOD = 3.2, FLICK_DUTY = 0.20;   // ghost manifests (visible + leaves a trace) this fraction of the time
+
+  // ---------- sound (synth, no files) ----------
+  const SFX = (function(){
+    let ac=null, master=null, noiseBuf=null;
+    function init(){ if(ac) return; const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+      ac=new AC(); master=ac.createGain(); master.gain.value=0.5; master.connect(ac.destination);
+      noiseBuf=ac.createBuffer(1,ac.sampleRate,ac.sampleRate); const d=noiseBuf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1; }
+    function on(){ init(); if(ac&&ac.state==='suspended') ac.resume(); }
+    function env(g,t0,a,dur,peak){ g.gain.setValueAtTime(0.0001,t0); g.gain.exponentialRampToValueAtTime(peak,t0+a); g.gain.exponentialRampToValueAtTime(0.0001,t0+dur); }
+    function tone(o){ if(!ac) return; const t0=ac.currentTime+(o.delay||0), dur=o.dur||0.3;
+      const osc=ac.createOscillator(); osc.type=o.type||'sine'; osc.frequency.setValueAtTime(o.f,t0);
+      if(o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(1,o.f2),t0+dur);
+      const g=ac.createGain(); env(g,t0,o.a||0.01,dur,o.gain||0.3); osc.connect(g); g.connect(master); osc.start(t0); osc.stop(t0+dur+0.05); }
+    function noise(o){ if(!ac) return; const t0=ac.currentTime+(o.delay||0), dur=o.dur||0.4;
+      const s=ac.createBufferSource(); s.buffer=noiseBuf; s.loop=true; const f=ac.createBiquadFilter(); f.type=o.filter||'lowpass';
+      f.frequency.setValueAtTime(o.f||800,t0); if(o.f2) f.frequency.exponentialRampToValueAtTime(Math.max(40,o.f2),t0+dur); if(o.q!=null) f.Q.value=o.q;
+      const g=ac.createGain(); env(g,t0,o.a||0.01,dur,o.gain||0.3); s.connect(f); f.connect(g); g.connect(master); s.start(t0); s.stop(t0+dur+0.05); }
+    return { on, state(){ return ac?ac.state:'none'; },
+      thump(){ on(); tone({type:'sine', f:62, f2:40, dur:0.16, gain:0.5}); },
+      flash(){ on(); noise({filter:'highpass', f:2600, dur:0.16, gain:0.16}); tone({type:'sine', f:1400, f2:500, dur:0.14, gain:0.12}); },
+      scare(){ on(); tone({type:'sawtooth', f:220, f2:840, dur:0.5, gain:0.22}); noise({filter:'bandpass', f:700, f2:2000, dur:0.6, gain:0.18, q:0.7}); tone({type:'sine', f:120, f2:60, dur:0.7, gain:0.2}); },
+      capture(){ on(); tone({type:'square', f:340, f2:60, dur:0.5, gain:0.28}); noise({filter:'lowpass', f:900, f2:120, dur:0.5, gain:0.3}); tone({type:'sawtooth', f:90, f2:40, dur:0.9, gain:0.22}); },
+      escape(){ on(); [[523,0],[659,0.13],[784,0.26],[1047,0.42]].forEach(([f,d])=>{ tone({type:'sine', f, dur:0.34, gain:0.18, delay:d}); tone({type:'triangle', f:f/2, dur:0.34, gain:0.1, delay:d}); }); },
+      creak(){ on(); tone({type:'sawtooth', f:140+Math.random()*120, f2:90, dur:0.4, gain:0.06}); } };
+  })();
+  const soundGate=document.getElementById('soundgate');
+  function refreshSound(){ if(soundGate) soundGate.style.display=(SFX.state()==='running')?'none':'block'; }
+  function unlockSound(){ SFX.on(); setTimeout(refreshSound,50); }
+  ['pointerdown','keydown','touchstart','click'].forEach(ev=> window.addEventListener(ev, unlockSound));
+  if(soundGate) soundGate.addEventListener('click', unlockSound);
+  setInterval(refreshSound,1000); refreshSound();
+
+  // ---------- helpers ----------
+  const clamp=(v,a,b)=> v<a?a:(v>b?b:v);
+  function angDiff(a,b){ let d=Math.abs(a-b)%(Math.PI*2); if(d>Math.PI) d=Math.PI*2-d; return d; }
+  function segSeg(ax,ay,bx,by,cx,cy,dx,dy){
+    const d=(bx-ax)*(dy-cy)-(by-ay)*(dx-cx); if(Math.abs(d)<1e-9) return false;
+    const t=((cx-ax)*(dy-cy)-(cy-ay)*(dx-cx))/d, u=((cx-ax)*(by-ay)-(cy-ay)*(bx-ax))/d;
+    return t>=0&&t<=1&&u>=0&&u<=1;
+  }
+  function segHitsRect(x1,y1,x2,y2,r){
+    if(x2>r.x&&x2<r.x+r.w&&y2>r.y&&y2<r.y+r.h) return true;
+    return segSeg(x1,y1,x2,y2, r.x,r.y, r.x+r.w,r.y) ||
+           segSeg(x1,y1,x2,y2, r.x+r.w,r.y, r.x+r.w,r.y+r.h) ||
+           segSeg(x1,y1,x2,y2, r.x+r.w,r.y+r.h, r.x,r.y+r.h) ||
+           segSeg(x1,y1,x2,y2, r.x,r.y+r.h, r.x,r.y);
+  }
+  function inFurn(x,y,pad){ for(const f of G.furniture){ if(x>f.x-pad&&x<f.x+f.w+pad&&y>f.y-pad&&y<f.y+f.h+pad) return true; } return false; }
+
+  // ---------- roster / match state ----------
+  const roster = new Map();      // id -> {id,name,color,connected}
+  const points = new Map();      // id -> cumulative score
+  const ghostCount = new Map();  // id -> times been ghost
+  let G = null;
+  let phase = 'lobby';           // lobby | playing | intermission | over
+  let roundIndex = 0, totalRounds = 0;
+  let roundEndsAt = 0, interEndsAt = 0;
+  let result = null, nextGhostName = '';
+  let lastBroadcast = 0, nextBeat = 0;
+
+  function connectedPlayers(){ return [...roster.values()].filter(p=>p.connected); }
+  function roomLeaderId(){ const c=connectedPlayers().sort((a,b)=>a.id-b.id); return c[0]?c[0].id:null; }
+  function pts(id){ return points.get(id)||0; }
+  function addPts(id,n){ points.set(id, pts(id)+n); }
+
+  // ---------- arena setup ----------
+  function stationFor(i,n){
+    // hunters stand on an inset ring inside the room (torches in hand, not wall-mounted)
+    const cx=(ARENA.x0+ARENA.x1)/2, cy=(ARENA.y0+ARENA.y1)/2;
+    const rx=(ARENA.x1-ARENA.x0)/2*STATION_INSET, ry=(ARENA.y1-ARENA.y0)/2*STATION_INSET;
+    const ang = -Math.PI/2 + (i/Math.max(1,n))*Math.PI*2;
+    return { x: cx+Math.cos(ang)*rx, y: cy+Math.sin(ang)*ry };
+  }
+  // Varied blockers: couches (wide), shelves/walls (long thin), tables + pillars (squarish).
+  function genFurniture(stations, spawns, want){
+    const A=ARENA, aw=A.x1-A.x0, ah=A.y1-A.y0, F=[];
+    const T=[
+      [0.15,0.18,250,64],[0.50,0.12,72,210],[0.85,0.20,230,64],
+      [0.27,0.40,64,230],[0.73,0.40,230,64],[0.50,0.50,170,120],
+      [0.15,0.66,64,250],[0.85,0.68,64,250],[0.50,0.88,250,64],
+      [0.32,0.74,150,64],[0.68,0.74,150,64],[0.37,0.27,120,120],
+      [0.63,0.27,120,120],[0.50,0.66,92,92],[0.23,0.88,150,60],[0.77,0.88,150,60],
+    ];
+    const order=T.slice().sort(()=>Math.random()-0.5);
+    const hitsPts=(r,arr,gap)=> arr.some(s=> s.x>r.x-gap && s.x<r.x+r.w+gap && s.y>r.y-gap && s.y<r.y+r.h+gap);
+    for(const t of order){
+      if(F.length>=want) break;
+      const w=t[2]*(0.85+Math.random()*0.35), h=t[3]*(0.85+Math.random()*0.35);
+      let x=A.x0+aw*t[0]-w/2 + (Math.random()-0.5)*46, y=A.y0+ah*t[1]-h/2 + (Math.random()-0.5)*46;
+      x=clamp(x,A.x0+14,A.x1-14-w); y=clamp(y,A.y0+14,A.y1-14-h);
+      const r={x,y,w,h};
+      if(hitsPts(r,spawns||[],84)) continue;                   // keep ghost spawns clear
+      if(hitsPts(r,stations||[],48)) continue;                 // don't bury a hunter
+      if(F.some(f=> !(r.x>f.x+f.w+22 || r.x+r.w<f.x-22 || r.y>f.y+f.h+22 || r.y+r.h<f.y-22))) continue;
+      F.push(r);
+    }
+    return F;
+  }
+
+  // ---------- round flow ----------
+  function newMatch(){
+    const ps=connectedPlayers(); if(ps.length<2) return;
+    points.clear(); ghostCount.clear();
+    ps.forEach(p=>{ points.set(p.id,0); ghostCount.set(p.id,0); });
+    totalRounds = Math.min(8, ps.length);
+    roundIndex = 0;
+    hideOverlay('lobby'); hideOverlay('card');
+    startRound();
+  }
+  function pickGhosts(k){
+    const ps=connectedPlayers().sort((a,b)=> (ghostCount.get(a.id)||0)-(ghostCount.get(b.id)||0) || a.id-b.id);
+    return ps.slice(0, Math.min(k, ps.length));
+  }
+  function ghostCountFor(nPlayers){ return Math.max(1, Math.min(nPlayers>=GHOSTS_AT?2:1, nPlayers-1)); }
+  function activeGhosts(){ return G ? G.ghosts.filter(g=>!g.caught) : []; }
+  function banner(text,color){ if(G) G.banner={text,color,t:performance.now()}; }
+
+  function startRound(){
+    const ps=connectedPlayers();
+    if(ps.length<2){ toLobby(); return; }
+    const k=ghostCountFor(ps.length);
+    const chosen=pickGhosts(k);
+    chosen.forEach(p=> ghostCount.set(p.id,(ghostCount.get(p.id)||0)+1));
+    const ghostIds=new Set(chosen.map(p=>p.id));
+    const hunterPs=ps.filter(p=>!ghostIds.has(p.id));
+    applyArenaScale(arenaScaleFor(hunterPs.length));            // bigger room as more hunters join
+    const cx=(ARENA.x0+ARENA.x1)/2, cy=(ARENA.y0+ARENA.y1)/2;
+    const reach=reachFor(hunterPs.length);
+    const stations=hunterPs.map((p,i)=> stationFor(i,hunterPs.length));
+    const spawns = k===1 ? [{x:cx,y:cy}]
+      : [{x:ARENA.x0+(ARENA.x1-ARENA.x0)*0.26, y:cy}, {x:ARENA.x0+(ARENA.x1-ARENA.x0)*0.74, y:cy}];
+    const furniture=genFurniture(stations, spawns, furnitureFor(hunterPs.length));
+    const ghosts=chosen.map((p,i)=>({ id:p.id, name:p.name, color:p.color,
+      x:spawns[i].x, y:spawns[i].y, vx:0, vy:0, exposure:0, reveal:0, scareCd:0, scarePoints:0,
+      speed:0, lastLitBy:null, footT:0, frostT:0, caught:false, vanished:false, capturedBy:null,
+      phase:Math.random()*10, litNow:false }));
+    G={ ghosts, hunters: hunterPs.map((p,i)=>({ id:p.id, name:p.name, color:p.color,
+          x:stations[i].x, y:stations[i].y, aim:Math.atan2(cy-stations[i].y, cx-stations[i].x),
+          flashCd:0, flashT:0, stunT:0, prox:0 })),
+        furniture, reach, footprints:[], frost:[], rings:[], captureFlash:0, banner:null };
+    for(const g of G.ghosts){ if(inFurn(g.x,g.y,GHOST_R)){ g.y-=120; if(inFurn(g.x,g.y,GHOST_R)) g.y+=240; } }
+    phase='playing'; roundEndsAt=performance.now()+ROUND_SECONDS*1000;
+    hideOverlay('card');
+    broadcast(true);
+  }
+  function endRound(){
+    let anySurvive=false, anyCaught=false;
+    for(const g of G.ghosts){
+      if(g.vanished) continue;                                  // disconnected: no points either way
+      if(!g.caught){ anySurvive=true; addPts(g.id, 3 + g.scarePoints); }
+      else {
+        anyCaught=true;
+        if(g.scarePoints) addPts(g.id, g.scarePoints);
+        G.hunters.forEach(h=>{ if(roster.get(h.id)&&roster.get(h.id).connected) addPts(h.id,2); });
+        if(g.capturedBy!=null) addPts(g.capturedBy,2);
+      }
+    }
+    const ng=G.ghosts.length, names=g=>g.map(x=>x.name).join(' & ');
+    if(!anySurvive && !anyCaught){ result={ win:'none', big:'The trail went cold…', sub:'The ghosts vanished. No points this round.' }; }
+    else if(!anyCaught){ result={ win:'ghost', big: ng>1?'👻 The ghosts escaped!':'👻 The ghost escaped!', sub: names(G.ghosts)+' survived the haunt' }; SFX.escape(); }
+    else if(!anySurvive){ result={ win:'hunters', big:'🔦 Caught!', sub: ng>1?'The hunters bagged both ghosts — +2 each':(G.ghosts[0].name+' was pinned in the light — hunters +2') }; SFX.capture(); G.captureFlash=1; }
+    else { result={ win:'split', big:'🔦 One got away…', sub: names(G.ghosts.filter(g=>!g.caught))+' escaped · '+names(G.ghosts.filter(g=>g.caught))+' caught' }; SFX.escape(); }
+    const nk=ghostCountFor(connectedPlayers().length);
+    nextGhostName = (roundIndex+1 < totalRounds) ? pickGhosts(nk).map(p=>p.name).join(' & ') : '';
+    phase='intermission'; interEndsAt=performance.now()+INTERMISSION*1000;
+    showCard();
+    broadcast(true);
+  }
+  function advanceAfterIntermission(){
+    if(roundIndex+1 < totalRounds){ roundIndex++; startRound(); }
+    else { phase='over'; showCard(); broadcast(true); }
+  }
+  function toLobby(){ phase='lobby'; G=null; applyArenaScale(1.0); showOverlay('lobby'); hideOverlay('card'); renderLobby(); broadcast(true); }
+
+  // ---------- simulation ----------
+  function moveGhost(g,dt){
+    let nx=g.x+g.vx*GHOST_SPEED*dt, ny=g.y+g.vy*GHOST_SPEED*dt;
+    nx=clamp(nx, ARENA.x0+GHOST_R, ARENA.x1-GHOST_R);
+    ny=clamp(ny, ARENA.y0+GHOST_R, ARENA.y1-GHOST_R);
+    if(!inFurn(nx, g.y, GHOST_R)) g.x=nx;
+    if(!inFurn(g.x, ny, GHOST_R)) g.y=ny;
+    g.speed=Math.hypot(g.vx,g.vy)*GHOST_SPEED;
+  }
+  function visibleTo(h, gx, gy){           // is a point inside this hunter's lit cone?
+    if(h.stunT>0) return false;
+    const r=roster.get(h.id); if(!r||!r.connected) return false;
+    const reach = h.flashT>0 ? G.reach*FLASH_REACH : G.reach;
+    const dx=gx-h.x, dy=gy-h.y, dist=Math.hypot(dx,dy);
+    if(dist>reach) return false;
+    if(angDiff(Math.atan2(dy,dx), h.aim) > HALF) return false;
+    for(const f of G.furniture){ if(segHitsRect(h.x,h.y,gx,gy,f)) return false; }
+    return true;
+  }
+  function stepPlay(dt){
+    G.captureFlash=Math.max(0,G.captureFlash-dt*1.4);
+    for(const rg of G.rings){ rg.r+=rg.spd*dt; rg.life-=dt/0.8; } G.rings=G.rings.filter(r=>r.life>0);
+    for(const fp of G.footprints) fp.life-=dt/1.3;   // a short burst that fades as the ghost vanishes again
+    for(const fr of G.frost) fr.life-=dt/1.0;
+    G.footprints=G.footprints.filter(f=>f.life>0); G.frost=G.frost.filter(f=>f.life>0);
+    for(const h of G.hunters){ h.flashCd=Math.max(0,h.flashCd-dt); h.flashT=Math.max(0,h.flashT-dt); h.stunT=Math.max(0,h.stunT-dt); }
+    let maxExposure=0;
+    for(const g of G.ghosts){
+      if(g.caught) continue;
+      const gr=roster.get(g.id);
+      if(!gr || !gr.connected){ g.caught=true; g.vanished=true; continue; }   // ghost left
+      moveGhost(g,dt);
+      g.scareCd=Math.max(0,g.scareCd-dt);
+      g.reveal=Math.max(0,g.reveal-dt/REVEAL_DUR);
+      let litCount=0, bestErr=99, litBy=null;
+      for(const h of G.hunters){ if(visibleTo(h,g.x,g.y)){ litCount++; const e=angDiff(Math.atan2(g.y-h.y,g.x-h.x),h.aim); if(e<bestErr){bestErr=e; litBy=h;} } }
+      if(litCount>0){ g.exposure=Math.min(CAUGHT, g.exposure + dt*(20+12*litCount)); if(litBy) g.lastLitBy=litBy.id; }
+      else g.exposure=Math.max(0, g.exposure - dt*DECAY);
+      g.litNow = litCount>0;
+      // leaks: fading footprints + cold spots
+      // Trace only leaks while the ghost is manifesting — the same ~20% window it flickers
+      // visible. Hidden 80% of the time => no footprints, no cold spots, nothing to track.
+      const tph = ((performance.now()/1000 + (g.phase||0)) % FLICK_PERIOD) / FLICK_PERIOD;
+      const traceOn = tph < FLICK_DUTY;
+      g.footT-=dt;
+      if(traceOn && g.footT<=0 && g.speed>40){ g.footT=0.3; G.footprints.push({x:g.x,y:g.y+GHOST_R*0.6, life:1, side:(G.footprints.length&1)?1:-1}); if(G.footprints.length>8) G.footprints.shift(); }
+      g.frostT-=dt;
+      if(traceOn && g.frostT<=0){ g.frostT=0.55; G.frost.push({x:g.x+(Math.random()-0.5)*26, y:g.y+(Math.random()-0.5)*26, life:1, r:16+Math.random()*16}); if(G.frost.length>6) G.frost.shift(); }
+      if(g.exposure>=CAUGHT){ g.caught=true; g.capturedBy=g.lastLitBy; G.captureFlash=1; G.rings.push({x:g.x,y:g.y,r:10,spd:760,life:1}); SFX.capture();
+        banner((roster.get(g.capturedBy)?roster.get(g.capturedBy).name:'A hunter')+' caught '+g.name+'!', '#22d3ee'); }
+      if(g.exposure>maxExposure) maxExposure=g.exposure;
+    }
+    // hunter proximity meter -> warmth toward the NEAREST live ghost
+    for(const h of G.hunters){
+      let best=0; const hr=roster.get(h.id);
+      if(h.stunT<=0 && hr && hr.connected){
+        for(const g of G.ghosts){ if(g.caught) continue;
+          const dx=g.x-h.x, dy=g.y-h.y, dist=Math.hypot(dx,dy);
+          if(dist<G.reach){ const err=angDiff(Math.atan2(dy,dx),h.aim);
+            if(err<METER_HALF){ let occ=false; for(const f of G.furniture){ if(segHitsRect(h.x,h.y,g.x,g.y,f)){occ=true;break;} }
+              if(!occ){ const p=(1-err/METER_HALF)*(1-dist/G.reach); if(p>best) best=p; } } } }
+      }
+      h.prox += (best-h.prox)*Math.min(1,dt*10);
+    }
+    if(SFX.state()==='running'){ const now=performance.now(); const period=Math.max(360, 1200 - maxExposure*9);
+      if(now>=nextBeat){ SFX.thump(); if(maxExposure>50) setTimeout(()=>SFX.thump(),period*0.45); nextBeat=now+period; } }
+    // end conditions
+    if(activeGhosts().length===0){ endRound(); return; }
+    if(performance.now()>=roundEndsAt){ endRound(); return; }
+  }
+
+  // ---------- input from phones ----------
+  function applyInput(id,type,payload){
+    if(type==='selectGame'){ if(id===roomLeaderId()){ const g=payload&&payload.game; location.href = g==='cannons'?'/couch?room='+ROOM : g==='frogger'?'/frogger?room='+ROOM : g==='poltergeist'?'/poltergeist?room='+ROOM : g==='beacon'?'/beacon?room='+ROOM : g==='tandem'?'/tandem?room='+ROOM : g==='glade'?'/glade?room='+ROOM : '/?room='+ROOM; } return; }
+    if(type==='start'){ if(phase==='lobby' && id===roomLeaderId()) newMatch(); return; }
+    if(type==='rematch'){ if(phase==='over' && id===roomLeaderId()) newMatch(); return; }
+    if(phase!=='playing' || !G) return;
+    if(type==='gmove'){ const g=G.ghosts.find(gh=>gh.id===id && !gh.caught); if(!g) return; let vx=+payload.vx||0, vy=+payload.vy||0; const m=Math.hypot(vx,vy); if(m>1){ vx/=m; vy/=m; } g.vx=vx; g.vy=vy; return; }
+    if(type==='gscare'){ const g=G.ghosts.find(gh=>gh.id===id && !gh.caught); if(g) doScare(g); return; }
+    if(type==='haim'){ const h=G.hunters.find(h=>h.id===id); if(h&&typeof payload.aim==='number') h.aim=payload.aim; return; }
+    if(type==='hflash'){ const h=G.hunters.find(h=>h.id===id); if(h) doFlash(h); return; }
+  }
+  function doScare(g){
+    if(g.scareCd>0) return;
+    g.scareCd=SCARE_CD; g.scarePoints+=1; g.reveal=1;
+    G.rings.push({x:g.x, y:g.y, r:20, spd:680, life:1});
+    for(const h of G.hunters){ if(Math.hypot(h.x-g.x,h.y-g.y)<SCARE_RADIUS) h.stunT=STUN_DUR; }
+    SFX.scare();
+  }
+  function doFlash(h){
+    if(h.flashCd>0 || h.stunT>0) return;
+    h.flashCd=FLASH_CD; h.flashT=FLASH_DUR;
+    SFX.flash();
+    for(const g of G.ghosts){ if(g.caught) continue;
+      if(visibleTo(h, g.x, g.y)){ g.exposure=Math.min(CAUGHT, g.exposure+FLASH_BURST); g.reveal=Math.max(g.reveal,0.9); g.lastLitBy=h.id; } }
+  }
+
+  // ---------- broadcast ----------
+  function publicState(){
+    const timeLeft = phase==='playing' ? Math.max(0,(roundEndsAt-performance.now())/1000) : 0;
+    const interLeft = phase==='intermission' ? Math.max(0,(interEndsAt-performance.now())/1000) : 0;
+    const ghostIds = G? G.ghosts.map(g=>g.id):[];
+    return {
+      game:'poltergeist', phase, roundIndex, totalRounds,
+      ghostIds, numGhosts: G?G.ghosts.length:1, ghostsLeft: G?activeGhosts().length:0,
+      ghosts: G? G.ghosts.map(g=>({id:g.id,name:g.name,color:g.color,exposure:Math.round(g.exposure),caught:g.caught,scareCd:g.scareCd})):[],
+      timeLeft, scareMax: SCARE_CD,
+      hunters: G?G.hunters.map(h=>({id:h.id, aim:+h.aim.toFixed(3), prox:+h.prox.toFixed(2), stunned:h.stunT>0, flashReady:h.flashCd<=0})):[],
+      players: [...roster.values()].map(p=>({id:p.id,name:p.name,color:p.color,connected:p.connected,points:pts(p.id),isGhost:ghostIds.includes(p.id)})),
+      result, nextGhostName, interLeft,
+    };
+  }
+  function broadcast(force){
+    const now=performance.now();
+    if(!force && now-lastBroadcast<55) return;
+    lastBroadcast=now;
+    socket.emit('host:state', publicState());
+    // private tactical map -> each living ghost gets its own
+    if(phase==='playing' && G){
+      const cones=G.hunters.map(h=>({x:Math.round(h.x),y:Math.round(h.y),aim:+h.aim.toFixed(3),
+        reach: h.flashT>0?G.reach*FLASH_REACH:G.reach, half:HALF, stunned:h.stunT>0, color:h.color}));
+      for(const g of G.ghosts){ if(g.caught) continue;
+        socket.emit('host:to', { id:g.id, payload:{
+          gx:Math.round(g.x), gy:Math.round(g.y), exposure:Math.round(g.exposure),
+          scareCd:g.scareCd, scareMax:SCARE_CD, arena:ARENA, furniture:G.furniture, cones,
+          allies: G.ghosts.filter(o=>o.id!==g.id && !o.caught).map(o=>({x:Math.round(o.x),y:Math.round(o.y),color:o.color})),
+        }});
+      }
+    }
+  }
+
+  // ---------- socket wiring ----------
+  socket.on('connect', ()=> socket.emit('host:hello', { code: ROOM || null }));
+  socket.on('host:roster', (arr)=>{ roster.clear(); arr.forEach(p=>roster.set(p.id,{...p})); ensurePlayer(); renderLobby(); broadcast(true); });
+  socket.on('host:playerJoined', (p)=>{ roster.set(p.id,{...p,connected:true}); ensurePlayer(); renderLobby(); broadcast(true); });
+  socket.on('host:playerLeft', ({id})=>{ const r=roster.get(id); if(r) r.connected=false; renderLobby(); broadcast(true); });
+  socket.on('host:input', ({id,type,payload})=> applyInput(id,type,payload||{}));
+  function ensurePlayer(){ for(const p of roster.values()){ if(!points.has(p.id)) points.set(p.id,0); if(!ghostCount.has(p.id)) ghostCount.set(p.id,0); } }
+
+  const $=(id)=>document.getElementById(id);
+  function showOverlay(id){ $(id).classList.add('show'); }
+  function hideOverlay(id){ $(id).classList.remove('show'); }
+
+  socket.on('host:room', ({code, joinUrl})=>{
+    document.querySelectorAll('.homelink').forEach(a=> a.setAttribute('href','/?room='+code));
+    $('roomCode').textContent=code;
+    const full=joinUrl+'?room='+code;
+    $('joinUrl').textContent=full.replace(/^https?:\/\//,'');
+    $('qr').innerHTML=''; try{ new QRCode($('qr'),{text:full,width:128,height:128,correctLevel:QRCode.CorrectLevel.M}); }catch(e){ $('qr').textContent='QR'; }
+  });
+
+  function renderLobby(){
+    const list=$('rlist'), players=[...roster.values()];
+    if(!players.length){ list.innerHTML='<div class="empty-hint">No one\'s joined yet…</div>'; }
+    else { list.innerHTML=''; players.forEach(p=>{ const el=document.createElement('div'); el.className='pill'+(p.connected?'':' off');
+      el.innerHTML=`<i style="background:${p.color};color:${p.color}"></i>${p.name}`; list.appendChild(el); }); }
+    const c=players.filter(p=>p.connected).length;
+    $('startcue').textContent = c>=2 ? 'First player: tap START on your phone ⟶' : (c===1?'Need at least one hunter — get one more phone in…':'');
+    if(phase==='lobby') showOverlay('lobby');
+  }
+  function standingsHTML(){
+    const gset=new Set(G?G.ghosts.map(g=>g.id):[]);
+    const ps=[...roster.values()].map(p=>({...p,pts:pts(p.id)})).sort((a,b)=>b.pts-a.pts);
+    const top=ps.length?ps[0].pts:0;
+    return ps.map(p=>`<div class="row${phase==='over'&&p.pts===top&&top>0?' win':''}"><i style="background:${p.color};color:${p.color}"></i>${p.name}${gset.has(p.id)?' 👻':''}<span class="pts">${p.pts}</span></div>`).join('');
+  }
+  function showCard(){
+    if(phase==='over'){
+      const ps=[...roster.values()].map(p=>({...p,pts:pts(p.id)})).sort((a,b)=>b.pts-a.pts);
+      const winner=ps[0];
+      $('cardBig').textContent = winner&&winner.pts>0 ? `${winner.name} wins!` : 'Game over';
+      if(winner&&winner.pts>0) $('cardBig').style.color=winner.color; else $('cardBig').style.color='#fff';
+      $('cardSub').textContent='First player can start a rematch from their phone.';
+    } else {
+      $('cardBig').style.color = result&&result.win==='ghost' ? 'var(--ecto)' : result&&result.win==='hunters' ? 'var(--teal)' : result&&result.win==='split' ? '#fbbf24' : '#fff';
+      $('cardBig').textContent = result?result.big:'';
+      $('cardSub').textContent = (result?result.sub:'') + (nextGhostName?`  ·  Next: ${nextGhostName}`:'');
+    }
+    $('cardStand').innerHTML=standingsHTML();
+    showOverlay('card');
+  }
+
+  // ---------- render ----------
+  function drawRoom(){
+    // floor
+    ctx.fillStyle='#06060d'; ctx.fillRect(0,0,W,H);
+    const fg=ctx.createLinearGradient(0,ARENA.y0,0,ARENA.y1);
+    fg.addColorStop(0,'#0c0b16'); fg.addColorStop(1,'#070611');
+    ctx.fillStyle=fg; ctx.fillRect(ARENA.x0-30,ARENA.y0-30,(ARENA.x1-ARENA.x0)+60,(ARENA.y1-ARENA.y0)+60);
+    ctx.strokeStyle='rgba(120,110,170,0.05)'; ctx.lineWidth=2;
+    for(let x=ARENA.x0; x<ARENA.x1; x+=86){ ctx.beginPath(); ctx.moveTo(x,ARENA.y0); ctx.lineTo(x,ARENA.y1); ctx.stroke(); }
+    // walls
+    ctx.strokeStyle='rgba(99,102,241,0.35)'; ctx.lineWidth=4;
+    ctx.strokeRect(ARENA.x0-18,ARENA.y0-18,(ARENA.x1-ARENA.x0)+36,(ARENA.y1-ARENA.y0)+36);
+  }
+  // Offscreen layer so each light can carve its own shadows before compositing.
+  const _layer=document.createElement('canvas'); _layer.width=W; _layer.height=H;
+  const lctx=_layer.getContext('2d');
+  function convexHull(ps){
+    ps=ps.slice().sort((a,b)=> a[0]-b[0]||a[1]-b[1]); const n=ps.length; if(n<3) return ps;
+    const cross=(o,a,b)=> (a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
+    const lo=[]; for(const p of ps){ while(lo.length>=2 && cross(lo[lo.length-2],lo[lo.length-1],p)<=0) lo.pop(); lo.push(p); }
+    const up=[]; for(let i=n-1;i>=0;i--){ const p=ps[i]; while(up.length>=2 && cross(up[up.length-2],up[up.length-1],p)<=0) up.pop(); up.push(p); }
+    lo.pop(); up.pop(); return lo.concat(up);
+  }
+  function drawConeWithShadows(h){
+    if(h.stunT>0) return;
+    const r=roster.get(h.id); if(!r||!r.connected) return;
+    const reach=h.flashT>0?G.reach*FLASH_REACH:G.reach, bright=h.flashT>0?0.95:0.46;
+    lctx.clearRect(0,0,W,H);
+    lctx.globalCompositeOperation='source-over';
+    const g=lctx.createRadialGradient(h.x,h.y,10,h.x,h.y,reach);
+    g.addColorStop(0,`rgba(255,240,200,${bright})`);
+    g.addColorStop(0.45,`rgba(255,226,150,${bright*0.34})`);
+    g.addColorStop(1,'rgba(255,210,120,0)');
+    lctx.fillStyle=g; lctx.beginPath(); lctx.moveTo(h.x,h.y);
+    lctx.arc(h.x,h.y,reach,h.aim-HALF,h.aim+HALF); lctx.closePath(); lctx.fill();
+    // carve furniture shadows out of this light
+    lctx.globalCompositeOperation='destination-out'; lctx.fillStyle='#000';
+    for(const f of G.furniture){
+      const corners=[[f.x,f.y],[f.x+f.w,f.y],[f.x+f.w,f.y+f.h],[f.x,f.y+f.h]];
+      const pts=[];
+      for(const c of corners){ pts.push(c); const dx=c[0]-h.x, dy=c[1]-h.y, d=Math.hypot(dx,dy)||1;
+        pts.push([c[0]+dx/d*reach*2.2, c[1]+dy/d*reach*2.2]); }
+      const hu=convexHull(pts); if(hu.length<3) continue;
+      lctx.beginPath(); lctx.moveTo(hu[0][0],hu[0][1]); for(let i=1;i<hu.length;i++) lctx.lineTo(hu[i][0],hu[i][1]); lctx.closePath(); lctx.fill();
+    }
+    ctx.globalCompositeOperation='lighter'; ctx.drawImage(_layer,0,0); ctx.globalCompositeOperation='source-over';
+  }
+  function drawFurniture(){
+    for(const f of G.furniture){
+      ctx.fillStyle='#08070f';
+      ctx.fillRect(f.x,f.y,f.w,f.h);
+      ctx.strokeStyle='rgba(140,130,190,0.25)'; ctx.lineWidth=2; ctx.strokeRect(f.x+0.5,f.y+0.5,f.w-1,f.h-1);
+      ctx.fillStyle='rgba(160,150,210,0.10)'; ctx.fillRect(f.x,f.y,f.w,6);
+    }
+  }
+  function drawClues(){
+    for(const fr of G.frost){ const a=fr.life*0.5; ctx.save(); ctx.globalCompositeOperation='lighter';
+      const g=ctx.createRadialGradient(fr.x,fr.y,0,fr.x,fr.y,fr.r*(1.3-fr.life*0.3));
+      g.addColorStop(0,`rgba(150,220,255,${a*0.5})`); g.addColorStop(1,'rgba(150,220,255,0)');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(fr.x,fr.y,fr.r*(1.3-fr.life*0.3),0,7); ctx.fill(); ctx.restore(); }
+    for(const fp of G.footprints){ ctx.save(); ctx.globalCompositeOperation='lighter';
+      ctx.fillStyle=`rgba(125,249,208,${fp.life*0.5})`;
+      ctx.beginPath(); ctx.ellipse(fp.x+fp.side*9, fp.y, 7, 11, 0, 0, 7); ctx.fill(); ctx.restore(); }
+  }
+  function drawGhost(g){
+    // Phantom: invisible ~80% of the time. A slow phase cycle flickers it into a brief
+    // apparition; being in the light (exposure) or a reveal pulse forces it visible.
+    const ph = ((performance.now()/1000 + (g.phase||0)) % FLICK_PERIOD) / FLICK_PERIOD;
+    const flick = ph < FLICK_DUTY ? Math.sin(ph / FLICK_DUTY * Math.PI) * 0.7 : 0;
+    const litA = g.litNow ? Math.max(0.55, 0.85*(g.exposure/CAUGHT)) : 0.85*(g.exposure/CAUGHT);
+    const alpha = clamp(Math.max(flick, litA) + g.reveal, 0, 0.97);
+    if(alpha < 0.015) return;                 // fully invisible this frame
+    const t=performance.now()/600, wob=Math.sin(t + g.x*0.01)*4;
+    ctx.save(); ctx.translate(g.x, g.y+wob);
+    ctx.globalCompositeOperation='lighter';
+    const glow=ctx.createRadialGradient(0,0,2,0,0,46);
+    glow.addColorStop(0,`rgba(170,255,230,${alpha*0.6})`); glow.addColorStop(1,'rgba(120,200,255,0)');
+    ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(0,0,46,0,7); ctx.fill();
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle=`rgba(228,255,248,${alpha})`;
+    ctx.beginPath(); ctx.arc(0,-6,18,Math.PI,0); // head
+    ctx.lineTo(18,14); for(let i=0;i<4;i++){ const xx=18-i*12; ctx.quadraticCurveTo(xx-6,22+(i%2?-6:4),xx-12,14); } // wavy hem
+    ctx.lineTo(-18,-6); ctx.closePath(); ctx.fill();
+    if(alpha>0.35){ ctx.fillStyle=`rgba(20,16,40,${Math.min(1,alpha+0.2)})`;
+      ctx.beginPath(); ctx.arc(-7,-8,3.4,0,7); ctx.arc(7,-8,3.4,0,7); ctx.fill(); }
+    ctx.restore();
+  }
+  function drawStation(h){
+    const stun=h.stunT>0, r=roster.get(h.id), off=!r||!r.connected;
+    ctx.save(); ctx.translate(h.x,h.y);
+    ctx.fillStyle = off?'#2a2740':(stun?'#3a2a40':'#15131f');
+    ctx.beginPath(); ctx.arc(0,0,16,0,7); ctx.fill();
+    ctx.lineWidth=3; ctx.strokeStyle=h.color; ctx.globalAlpha=off?0.3:(stun?0.5:1); ctx.stroke();
+    ctx.globalAlpha=1;
+    // little barrel pointing along aim
+    if(!off){ ctx.rotate(h.aim); ctx.fillStyle=stun?'#5a4a60':'#e9e7ff'; ctx.fillRect(8,-4,16,8); }
+    ctx.restore();
+    if(stun){ ctx.fillStyle='#ffd166'; ctx.font='bold 26px Inter'; ctx.textAlign='center'; ctx.fillText('💫', h.x, h.y-22); }
+  }
+  function drawRings(){
+    for(const rg of G.rings){ ctx.save(); ctx.globalCompositeOperation='lighter';
+      ctx.strokeStyle=`rgba(125,249,208,${rg.life*0.6})`; ctx.lineWidth=6;
+      ctx.beginPath(); ctx.arc(rg.x,rg.y,rg.r,0,7); ctx.stroke(); ctx.restore(); }
+  }
+  function fmtTime(s){ s=Math.max(0,Math.ceil(s)); const m=Math.floor(s/60); return m+':'+String(s%60).padStart(2,'0'); }
+  function drawHUD(){
+    // round + timer
+    ctx.textAlign='left'; ctx.fillStyle='#9a93b5'; ctx.font='800 24px Inter';
+    ctx.fillText(`ROUND ${roundIndex+1} / ${totalRounds}`, ARENA.x0, 52);
+    const tl=Math.max(0,(roundEndsAt-performance.now())/1000);
+    ctx.textAlign='center'; ctx.font='900 48px Anton, Inter';
+    ctx.fillStyle = tl<15 ? '#ff5470' : '#e9e7ff';
+    ctx.fillText('⏱ '+fmtTime(tl), W/2, 50);
+    // per-ghost exposure bars under the timer
+    const gs=G.ghosts, n=gs.length, bw=n>1?300:520, gap=26, totW=n*bw+(n-1)*gap, bx0=W/2-totW/2, by=70, bh=16;
+    gs.forEach((g,i)=>{ const bx=bx0+i*(bw+gap);
+      ctx.fillStyle='rgba(255,255,255,0.08)'; roundRect(bx,by,bw,bh,8); ctx.fill();
+      const ex=g.caught?1:g.exposure/CAUGHT;
+      const grd=ctx.createLinearGradient(bx,0,bx+bw,0); grd.addColorStop(0,'#22d3ee'); grd.addColorStop(0.6,'#fbbf24'); grd.addColorStop(1,'#ff5470');
+      ctx.fillStyle=g.caught?'rgba(120,110,150,0.5)':grd; roundRect(bx,by,Math.max(6,bw*ex),bh,8); ctx.fill();
+      ctx.fillStyle=g.caught?'#6b6486':'#cbd5e1'; ctx.font='800 13px Inter'; ctx.textAlign='center';
+      ctx.fillText('👻 '+g.name+(g.caught?' — CAUGHT':''), bx+bw/2, by+bh+15); });
+    // scoreboard (right)
+    const gset=new Set(gs.map(g=>g.id));
+    const players=[...roster.values()].map(p=>({...p,pts:pts(p.id)})).sort((a,b)=>b.pts-a.pts);
+    let sy=120; ctx.textAlign='left';
+    players.forEach(p=>{ ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(ARENA.x1-156,sy-6,7,0,7); ctx.fill();
+      ctx.fillStyle = p.connected?'#e9e7ff':'#6b6486'; ctx.font='800 19px Inter';
+      ctx.fillText(`${p.name}${gset.has(p.id)?' 👻':''}`, ARENA.x1-142, sy);
+      ctx.fillStyle='#cbd5e1'; ctx.font='900 19px Anton, Inter'; ctx.textAlign='right'; ctx.fillText(p.pts, ARENA.x1, sy); ctx.textAlign='left';
+      sy+=28; });
+    // event banner (a catch etc.)
+    if(G.banner){ const age=(performance.now()-G.banner.t)/1000; if(age<2.4){ ctx.globalAlpha=Math.max(0,1-age/2.4);
+      ctx.textAlign='center'; ctx.font='900 30px Anton, Inter'; ctx.fillStyle=G.banner.color; ctx.fillText(G.banner.text, W/2, H-38); ctx.globalAlpha=1; } }
+  }
+  function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  let last=performance.now();
+  function loop(now){
+    const dt=Math.min(0.05,(now-last)/1000); last=now;
+    if(phase==='playing' && G){ stepPlay(dt); broadcast(false); }
+    else if(phase==='intermission'){ if(performance.now()>=interEndsAt) advanceAfterIntermission(); broadcast(false); }
+    // render
+    ctx.clearRect(0,0,W,H);
+    if(G){
+      drawRoom();
+      for(const h of G.hunters) drawConeWithShadows(h);
+      drawFurniture();
+      drawClues();
+      if(phase==='playing' || phase==='intermission'){ for(const g of G.ghosts){ if(!g.caught) drawGhost(g); } }
+      drawRings();
+      for(const h of G.hunters) drawStation(h);
+      // capture flash
+      if(G.captureFlash>0){ ctx.fillStyle=`rgba(255,255,255,${G.captureFlash*0.5})`; ctx.fillRect(0,0,W,H); }
+      // darkness vignette
+      const v=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
+      v.addColorStop(0,'rgba(0,0,0,0)'); v.addColorStop(1,'rgba(0,0,0,0.6)');
+      ctx.fillStyle=v; ctx.fillRect(0,0,W,H);
+      if(phase==='playing' || phase==='intermission') drawHUD();
+    } else {
+      drawRoom();
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ---------- attract / demo mode (?demo or ?demo=N) ----------
+  // Spins up AI "phones" so the hunt runs by itself — lets you watch the game live with
+  // no real players. Ghosts orbit the dark centre (so they flicker in and out) while the
+  // hunters aim their torches at the walls. Completely inert unless ?demo is in the URL.
+  (function demoMode(){
+    const q = new URLSearchParams(location.search);
+    if(!q.has('demo')) return;
+    const N = Math.max(2, Math.min(8, +q.get('demo') || 2));
+    let bots = null;
+    socket.on('host:room', ({ code }) => {
+      if(bots) return; bots = [];
+      for(let i=0;i<N;i++){
+        const s = io(), o = { s, id:null };
+        s.on('ctrl:joined', m => o.id = m.id);
+        setTimeout(()=> s.emit('ctrl:join', { name:'Bot '+(i+1), token:'pdemo-'+i+'-'+Math.random().toString(36).slice(2), code }), 130*i);
+        bots.push(o);
+      }
+      const byId = id => bots.find(b => b.id===id);
+      setTimeout(()=> bots[0] && bots[0].s.emit('ctrl:start'), 1300);
+      setInterval(()=>{
+        if(phase==='over'){ bots[0] && bots[0].s.emit('ctrl:rematch'); return; }
+        if(phase!=='playing' || !G) return;
+        const cx=(ARENA.x0+ARENA.x1)/2, cy=(ARENA.y0+ARENA.y1)/2, tnow=performance.now()/1000;
+        G.ghosts.forEach((g,gi)=>{ if(g.caught) return; const b=byId(g.id); if(!b) return;
+          const tx=cx+Math.cos(tnow*0.55+gi*3)*180, ty=cy+Math.sin(tnow*0.55+gi*3)*120;   // slow orbit of the dark centre
+          let dx=tx-g.x, dy=ty-g.y, m=Math.hypot(dx,dy)||1;
+          b.s.emit('ctrl:gmove', m>10?{vx:dx/m,vy:dy/m}:{vx:0,vy:0}); });
+        G.hunters.forEach(h=>{ const b=byId(h.id); if(!b) return;
+          b.s.emit('ctrl:haim',{ aim:Math.atan2(h.y-cy, h.x-cx) }); });   // beams point outward, away from the ghosts
+      }, 250);
+    });
+  })();
+})();
+</script>
+</body>
+</html>
