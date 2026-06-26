@@ -172,6 +172,12 @@
       shield(){ on(); tone(1400,700,0.12,'square',0.16); setTimeout(()=>tone(900,1600,0.12,'triangle',0.12),60); },             // clink/absorb
       trainhorn(){ on(); tone(150,150,0.5,'sawtooth',0.22); setTimeout(()=>tone(115,115,0.6,'sawtooth',0.22),180); },           // low horn
       trainpass(){ on(); if(!actx) return; const t=actx.currentTime,s=actx.createBufferSource(),buf=actx.createBuffer(1,actx.sampleRate*0.5,actx.sampleRate),d=buf.getChannelData(0); for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2); s.buffer=buf; const f=actx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=900; const g=actx.createGain(); g.gain.value=0.18; s.connect(f); f.connect(g); g.connect(master); s.start(t); },   // rushing whoosh
+      ufo(){ on(); if(!actx) return; const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain(),lfo=actx.createOscillator(),lg=actx.createGain();
+        o.type='sine'; o.frequency.setValueAtTime(620,t); o.frequency.linearRampToValueAtTime(880,t+1.0);
+        lfo.type='sine'; lfo.frequency.value=9; lg.gain.value=120; lfo.connect(lg); lg.connect(o.frequency);   // warble
+        g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.14,t+0.1); g.gain.setValueAtTime(0.14,t+0.9); g.gain.exponentialRampToValueAtTime(0.0001,t+1.3);
+        o.connect(g); g.connect(master); o.start(t); lfo.start(t); o.stop(t+1.35); lfo.stop(t+1.35); },               // eerie hum
+      teleport(){ on(); [1568,1245,988,1568,2093].forEach((f,i)=>setTimeout(()=>tone(f,f*1.5,0.08,'sine',0.14),i*45)); },   // sparkly zap
       weee(){ on(); if(!actx) return; const t=actx.currentTime, o=actx.createOscillator(), g=actx.createGain(), lfo=actx.createOscillator(), lg=actx.createGain();
         o.type='sawtooth';                                                  // buzzy kazoo "weeeee" that rides up and wobbles
         o.frequency.setValueAtTime(430,t); o.frequency.exponentialRampToValueAtTime(1500,t+0.55);
@@ -207,15 +213,16 @@
     if(!water && !road) return ents;
     const span = WORLD_W + 2*GROUND_EXT + 220; r.span = span;   // long enough to slide fully off and back on
     const baseW = road ? {skunk:54,moped:92,bicycle:74,bowling:46}[r.type] : 0;
-    // Walk across the visible lane laying down entities with uneven, random gaps — so rows
-    // end up with different amounts and never look evenly spaced.
-    const maxN = road ? 4 : 6;                       // cap density so a row is never impossible to pass
-    let x = -GROUND_EXT - 70 - Math.random()*90;
+    // Walk across the visible lane laying down entities with uneven, random gaps — counts, phase,
+    // sizes and spacing all jitter so rows never read as an even, repeating pattern.
+    const maxN = road ? (2+Math.floor(Math.random()*3)) : (3+Math.floor(Math.random()*4));   // 2-4 cars / 3-6 logs
+    let x = -GROUND_EXT - 40 - Math.random()*220;                            // randomized starting phase
     while(x < WORLD_W + GROUND_EXT && ents.length < maxN){
-      const w = water ? 100+Math.random()*80 : baseW;
-      ents.push(water ? { x:x+w/2, w, color:(ents.length%2?C.log:C.logAlt) }
+      const w = water ? 90+Math.random()*100 : baseW*(0.9+Math.random()*0.3);
+      ents.push(water ? { x:x+w/2, w, color:(Math.random()<0.5?C.log:C.logAlt) }
                       : { x:x+w/2, w, color:VEH_COLOR() });
-      const gap = water ? 50+Math.random()*95 : 100+Math.random()*180;   // roads spaced out so there's always a dodgeable gap
+      let gap = water ? 45+Math.random()*110 : 80+Math.random()*210;        // wide variance so there's always a dodgeable gap
+      if(!water && Math.random()<0.28) gap += 80+Math.random()*170;         // occasional big empty stretch
       x += w + gap;
     }
     if(!ents.length) ents.push(water ? {x:WORLD_W/2,w:140,color:C.log} : {x:WORLD_W/2,w:baseW,color:VEH_COLOR()});
@@ -226,12 +233,12 @@
   function buildRows(level){
     // Every level adds one full road+river PAIR, with the river nearest the goal — so the last
     // thing before the finish is always a river. L1 = road,river ; L2 = road,river,road,river …
-    const pairs = Math.min(5, level), defs=[]; let oi=0, dir=1;
+    const pairs = Math.min(5, level), defs=[]; let dir=1;
     defs.push({kind:'goal'});
     for(let p=pairs-1; p>=0; p--){
       for(let k=0;k<2;k++) defs.push({kind:'water', dir:(dir=-dir), speed:50+Math.random()*85});                                      // river (just below the goal for the top pair)
       if(p===pairs-1) defs.push({kind:'rail'});                                                                                        // dedicated thin train track between the river and the road
-      for(let k=0;k<2;k++) defs.push({kind:'road',  dir:(dir=-dir), speed:75+Math.random()*105, type:OBS_TYPES[oi++%OBS_TYPES.length]}); // road below it
+      for(let k=0;k<2;k++) defs.push({kind:'road',  dir:(dir=-dir), speed:75+Math.random()*105, type:OBS_TYPES[Math.floor(Math.random()*OBS_TYPES.length)]}); // road below it (random vehicle per lane)
       if(p>0) defs.push({kind:'safe'});
     }
     defs.push({kind:'safe'});
@@ -249,9 +256,9 @@
     const level=1, rows=buildRows(level);
     const birds=new Map();
     players.forEach((p,i)=>{ const b={ id:p.id, name:p.name, color:p.color, type:p.type||'duck', connected:true,
-      lives:3, score:0, hop:0, dir:'up', deadAt:0, invulnUntil:0, riderOf:null, carrying:null, rideUntil:0, eliminated:false, hasRocket:false, shieldUntil:0, carryingEgg:false,
+      lives:3, score:0, hop:0, dir:'up', deadAt:0, invulnUntil:0, riderOf:null, carrying:null, rideUntil:0, eliminated:false, inv:[], shieldUntil:0,
       slot:(i+1)/(players.length+1) }; birds.set(p.id,b); });
-    G={ rows, level, levelMult:1, fish:[false,false,false,false,false], birds, started:players.length, items:[], freezeUntil:0, levelClearUntil:0, train:null, nextTrain:performance.now()+8000+Math.random()*9000 };
+    G={ rows, level, levelMult:1, fish:[false,false,false,false,false], birds, started:players.length, items:[], freezeUntil:0, levelClearUntil:0, train:null, nextTrain:performance.now()+8000+Math.random()*9000, ufo:null, nextUfo:performance.now()+12000+Math.random()*10000 };
     birds.forEach(b=>spawnBird(b,true)); placeItems();
     phase='playing'; winner=null; hideOverlay('lobby'); hideOverlay('over'); broadcast(true);
   }
@@ -265,12 +272,13 @@
   // Level beaten: pause for a short celebration so nobody dies mid-jump when the board rebuilds.
   function nextLevel(){ if(!G || G.levelClearUntil) return;
     const now=performance.now(); G.levelClearUntil = now + LEVEL_CLEAR_MS; G.items=[]; G.train=null; G.freezeUntil=0;
+    if(G.ufo){ const tb=G.birds.get(G.ufo.id); if(tb) tb.beamed=false; G.ufo=null; }
     G.birds.forEach(b=>{ if(!b.eliminated) b.invulnUntil = Math.max(b.invulnUntil, now + LEVEL_CLEAR_MS + 250); });   // invincible through the celebration
     flash('LEVEL '+G.level+' COMPLETE!','#34d399'); SFX.levelup(); broadcast(true);
     setTimeout(advanceLevel, LEVEL_CLEAR_MS); }
   function advanceLevel(){ if(!G) return;
     G.level++; G.levelMult=1+(G.level-1)*0.15; G.rows=buildRows(G.level); G.fish=[false,false,false,false,false]; G.levelClearUntil=0;
-    G.birds.forEach(b=>{ if(!b.eliminated) spawnBird(b,true); }); placeItems(); G.nextTrain=performance.now()+8000+Math.random()*9000;   // keep any unused rocket — it carries to the next level
+    G.birds.forEach(b=>{ if(!b.eliminated) spawnBird(b,true); }); placeItems(); G.nextTrain=performance.now()+8000+Math.random()*9000; G.nextUfo=performance.now()+12000+Math.random()*10000;   // keep any unused items — they carry to the next level
     flash('LEVEL '+G.level+'!','#ffd166'); SFX.level(); broadcast(true); }
 
   // ---- power-up items: two per level, each shows 15s / hides 3s, then reappears as a fresh random item ----
@@ -283,24 +291,27 @@
     return { type:ITEM_TYPES[Math.floor(Math.random()*ITEM_TYPES.length)], lane, wx, visible:true, collected:false, until:performance.now()+ITEM_ON }; }
   function placeItems(){ if(!G) return; G.items=[]; for(let i=0;i<2;i++){ const it=newItem(); if(it) G.items.push(it); } }
   function placeRocket(){ placeItems(); }   // legacy alias for existing call sites
+  // ---- inventory: each bird holds up to 3 stackable items (rockets + eggs) ----
+  const INV_MAX=3;
+  const invHas=(b,t)=>!!(b.inv && b.inv.includes(t));
+  const invCount=b=>(b.inv?b.inv.length:0);
+  function invAdd(b,t){ if(b.inv && b.inv.length<INV_MAX){ b.inv.push(t); return true; } return false; }
+  function invUseOne(b,t){ const i=b.inv?b.inv.indexOf(t):-1; if(i>=0){ b.inv.splice(i,1); return true; } return false; }
   function itemEffect(b,type){
     if(type==='rocket'){
-      if(b.carrying){ const rid=b.carrying; rocketLaunch(b); const r=G.birds.get(rid); if(r) rocketLaunch(r); flash('Piggyback ROCKET — both blast off! 🚀','#22d3ee'); }
-      else { b.hasRocket=true; flash(b.name+' grabbed a ROCKET!','#ffd166'); }
+      if(b.carrying){ const rid=b.carrying; rocketLaunch(b); const r=G.birds.get(rid); if(r) rocketLaunch(r); flash('Piggyback ROCKET — both blast off! 🚀','#22d3ee'); }   // piggyback combo: used instantly, not stored
+      else { invAdd(b,'rocket'); flash(b.name+' grabbed a ROCKET! ('+invCount(b)+'/3)','#ffd166'); }
       SFX.power();
-    } else if(type==='clock'){ G.freezeUntil=performance.now()+3000; SFX.freeze(); flash('TIME FREEZE! ⏱','#7dd3fc'); }
+    } else if(type==='clock'){ G.freezeUntil=performance.now()+10000; SFX.freeze(); flash('TIME FREEZE! ⏱','#7dd3fc'); }
     else if(type==='shield'){ b.shieldUntil=performance.now()+8000; SFX.power(); flash(b.name+' got a SHIELD!','#a78bfa'); }
-    else if(type==='egg'){ b.carryingEgg=true; SFX.power(); flash(b.name+' grabbed the GOLDEN EGG — finish it for 3×!','#ffd166'); }
+    else if(type==='egg'){ invAdd(b,'egg'); SFX.power(); flash(b.name+' grabbed a GOLDEN EGG! ('+invCount(b)+'/3)','#ffd166'); }
   }
   function collectItem(b){ if(!G||!G.items||b.eliminated||b.deadAt||b.riderOf) return false;
     for(const it of G.items){ if(!it.visible||it.collected) continue;
       if(b.laneIndex!==it.lane || Math.abs(b.wx-it.wx)>34) continue;
-      if(it.type==='rocket' && b.hasRocket && !b.carrying) continue;   // already holding a rocket
-      if(it.type==='egg' && b.carryingEgg) continue;
+      if((it.type==='egg' || (it.type==='rocket' && !b.carrying)) && invCount(b)>=INV_MAX) continue;   // inventory full (clock/shield are instant, always collectible)
       it.collected=true; it.visible=false; itemEffect(b,it.type); broadcast(true); return true; }
     return false; }
-  function dropEgg(b){ if(!b.carryingEgg||!G) return; b.carryingEgg=false;   // knocked out while carrying — egg drops back on the board
-    if(G.items){ G.items.push({ type:'egg', lane:b.laneIndex, wx:b.wx, visible:true, collected:false, until:performance.now()+ITEM_ON }); } }
   function rocketLaunch(b){ if(!G||b.eliminated||b.launch) return;
     if(b.riderOf) dismount(b);
     if(b.carrying){ const r=G.birds.get(b.carrying); if(r){ r.riderOf=null; r.rideUntil=0; r.wx=b.wx; r.laneIndex=b.laneIndex; r.invulnUntil=performance.now()+800; } b.carrying=null; }
@@ -311,13 +322,12 @@
   function flash(m,c){ flashMsg={m,c}; flashT=performance.now(); }
 
   function reachGoal(b){ const slotW=WORLD_W/5, idx=Math.max(0,Math.min(4,Math.floor(b.wx/slotW))), slotX=(idx+0.5)*slotW;
-    if(!G.fish[idx] && Math.abs(b.wx-slotX)<slotW*0.45){ G.fish[idx]=true; const mult=b.carryingEgg?3:1; b.score+=100*G.level*mult; SFX.eat();
-      if(b.carryingEgg){ b.carryingEgg=false; flash(b.name+' delivered the GOLDEN EGG! 3×','#ffd166'); }
+    if(!G.fish[idx] && Math.abs(b.wx-slotX)<slotW*0.45){ G.fish[idx]=true; const hasEgg=invHas(b,'egg'), mult=hasEgg?3:1; b.score+=100*G.level*mult; SFX.eat();
+      if(hasEgg){ invUseOne(b,'egg'); flash(b.name+' delivered a GOLDEN EGG! 3×','#ffd166'); }
       if(G.fish.every(f=>f)) nextLevel(); else spawnBird(b,true); }
     else die(b); }
   function die(b){ if(performance.now()<b.invulnUntil || b.deadAt) return;
     if(performance.now()<b.shieldUntil){ b.shieldUntil=0; b.invulnUntil=performance.now()+700; SFX.shield(); flash(b.name+"'s shield saved them!",'#a78bfa'); return; }   // shield absorbs one hit
-    if(b.carryingEgg) dropEgg(b);   // knocked out carrying the egg — it drops back on the board
     // drop any rider on this bird's back — leave them right where we are, and they survive
     if(b.carrying){ const r=G.birds.get(b.carrying); if(r){ r.wx=b.wx; r.laneIndex=b.laneIndex; r.riderOf=null; r.rideUntil=0; r.invulnUntil=performance.now()+800; } b.carrying=null; }
     if(b.riderOf){ const c=G.birds.get(b.riderOf); if(c) c.carrying=null; b.riderOf=null; }
@@ -338,11 +348,11 @@
   // Dismount leaves the rider exactly where the carrier is now (not back at the start).
   function dismount(rider){ if(!rider.riderOf) return; const c=G.birds.get(rider.riderOf); if(c){ rider.wx=c.wx; rider.laneIndex=c.laneIndex; c.carrying=null; } rider.riderOf=null; rider.rideUntil=0; rider.invulnUntil=performance.now()+700; }
 
-  function playerHop(b,dir){ if(b.deadAt||b.riderOf||b.eliminated||b.launch||clearing()) return; b.dir=dir; __hops++;
+  function playerHop(b,dir){ if(b.deadAt||b.riderOf||b.eliminated||b.launch||b.beamed||clearing()) return; b.dir=dir; __hops++;
     if(dir==='up'&&b.laneIndex>0) b.laneIndex--; else if(dir==='down'&&b.laneIndex<G.rows.length-1) b.laneIndex++;
     else if(dir==='left') b.wx=Math.max(24,b.wx-COL); else if(dir==='right') b.wx=Math.min(WORLD_W-24,b.wx+COL); else return;
     b.hop=1; SFX.hop();
-    if(!b.carrying && !b.carryingEgg){ for(const o of G.birds.values()){ if(o===b||o.eliminated||o.deadAt||o.carryingEgg) continue;   // can't piggyback while either bird carries the golden egg
+    if(!b.carrying){ for(const o of G.birds.values()){ if(o===b||o.eliminated||o.deadAt) continue;
       if(o.laneIndex===b.laneIndex && Math.abs(o.wx-b.wx)<COL*0.7 && !o.carrying && !o.riderOf){ mount(b,o); break; } } }
     collectItem(b);   // grab whatever item we just hopped onto (incl. end-spot items)
     if(G.rows[b.laneIndex].kind==='goal') reachGoal(b);
@@ -361,7 +371,7 @@
     // item flicker: each shows ITEM_ON, hides ITEM_OFF, then reappears as a fresh random item
     if(G.items) for(const it of G.items){ if(it.collected) continue; if(now>it.until){
       if(it.visible){ it.visible=false; it.until=now+ITEM_OFF; } else { const ni=newItem(); if(ni){ it.type=ni.type; it.lane=ni.lane; it.wx=ni.wx; it.visible=true; it.until=ni.until; } } } }
-    updateTrain(now,dt,frozen);
+    updateTrain(now,dt,frozen); updateUfo(now);
     // smooth, predictable hop: the visual position eases toward the logical cell
     const ek=Math.min(1, dt*13);
     for(const b of G.birds.values()){ if(b.eliminated||b.launch) continue;
@@ -374,9 +384,10 @@
         b.vx = L.fromX + (L.toX-L.fromX)*ex; b.vly = L.fromLane*(1-Math.pow(p,1.4)); b.launchZ = Math.sin(p*Math.PI)*80 + p*26;
         if(p>=1){ b.launch=null; b.launchZ=0;
           let slot=(L.slot>=0 && !G.fish[L.slot]) ? L.slot : G.fish.findIndex(f=>!f);
-          if(slot>=0){ G.fish[slot]=true; const m=b.carryingEgg?3:1; b.score+=100*G.level*m; if(b.carryingEgg) b.carryingEgg=false; SFX.eat(); }
+          if(slot>=0){ const hasEgg=invHas(b,'egg'), m=hasEgg?3:1; G.fish[slot]=true; b.score+=100*G.level*m; if(hasEgg) invUseOne(b,'egg'); SFX.eat(); }
           if(G.fish.every(f=>f)) nextLevel(); else spawnBird(b,true); broadcast(true); }
         continue; }
+      if(b.beamed) continue;   // held in the UFO's tractor beam — frozen + safe until teleported
       if(b.hop>0) b.hop=Math.max(0,b.hop-dt*5);
       if(b.riderOf){ const c=G.birds.get(b.riderOf);
         if(c && !c.eliminated){ b.wx=c.wx; b.laneIndex=c.laneIndex; }   // ride along — keep position synced to the carrier
@@ -409,6 +420,25 @@
     if(T.phase==='run'){ if(!frozen) T.x += T.dir*T.speed*dt;
       if((T.dir>0 && T.x > WORLD_W+GROUND_EXT+90) || (T.dir<0 && T.x < -GROUND_EXT-90)){ G.train=null; G.nextTrain=now+9000+Math.random()*10000; broadcast(true); } } }
 
+  // ---- alien UFO: from level 3, abducts a random bird and teleports them somewhere safe (forward OR back, never fatal) ----
+  function updateUfo(now){
+    if(!G||phase!=='playing'||clearing()) return;
+    if(!G.ufo){ if(G.level>=3 && now>=G.nextUfo){ const c=[...G.birds.values()].filter(b=>!b.eliminated&&!b.deadAt&&!b.launch&&!b.riderOf&&!b.beamed);
+      if(c.length){ const b=c[Math.floor(Math.random()*c.length)]; b.beamed=true; b.invulnUntil=now+4000;
+        G.ufo={ id:b.id, phase:'in', t0:now, hx:b.wx, hlane:b.laneIndex }; SFX.ufo(); flash('👽 UFO INCOMING!','#a8ff60'); broadcast(true); }
+      else G.nextUfo=now+4000; } return; }
+    const U=G.ufo, b=G.birds.get(U.id), e=now-U.t0;
+    if(!b||b.eliminated){ G.ufo=null; G.nextUfo=now+12000+Math.random()*12000; return; }
+    if(U.phase==='in'){ if(e>800){ U.phase='beam'; U.t0=now; } }
+    else if(U.phase==='beam'){ if(e>1100){
+      const safe=[]; G.rows.forEach((r,i)=>{ if(r.kind==='safe') safe.push(i); });
+      const dest = safe.length ? safe[Math.floor(Math.random()*safe.length)] : Math.max(0,b.laneIndex-3);
+      const fwd = dest < b.laneIndex;
+      b.laneIndex=dest; b.wx=Math.max(40,Math.min(WORLD_W-40, 60+Math.random()*(WORLD_W-120))); b.vx=b.wx; b.vly=b.laneIndex;
+      b.beamed=false; b.invulnUntil=now+1600; b.hop=0; b.checkpoint=Math.min(b.checkpoint==null?1e9:b.checkpoint, dest);
+      U.phase='out'; U.t0=now; U.hx=b.wx; U.hlane=dest; SFX.teleport(); flash('👽 '+b.name+(fwd?' got beamed FORWARD!':' got beamed back!'),'#a8ff60'); broadcast(true); } }
+    else if(U.phase==='out'){ if(e>700){ G.ufo=null; G.nextUfo=now+13000+Math.random()*12000; broadcast(true); } } }
+
   // ---- input from phones ----
   function roomLeaderId(){ const c=[...roster.values()].filter(p=>p.connected).sort((a,b)=>a.id-b.id); return c[0]?c[0].id:null; }
   function applyInput(id,type,p){
@@ -420,7 +450,7 @@
     const b=G.birds.get(id); if(!b) return;
     if(type==='hop') playerHop(b,p.dir);
     else if(type==='ride') dismount(b);
-    else if(type==='rocket'){ if(b.hasRocket && !clearing()){ b.hasRocket=false; rocketLaunch(b); } }
+    else if(type==='rocket'){ if(invHas(b,'rocket') && !clearing()){ invUseOne(b,'rocket'); rocketLaunch(b); } }
   }
 
   // ---- networking ----
@@ -436,9 +466,9 @@
   function broadcast(force){ const now=performance.now(); if(!force && now-lastBroadcast<80) return; lastBroadcast=now;
     if(phase==='lobby'){ socket.emit('host:state',{ game:'frogger', phase:'lobby', level:1, winner:null,
       players:[...roster.values()].map(p=>({id:p.id,name:p.name,color:p.color,type:p.type,score:0,lives:3,alive:true,connected:p.connected})) }); return; }
-    socket.emit('host:state',{ game:'frogger', phase, level:G.level, winner, frozen:(G.freezeUntil>now),
+    socket.emit('host:state',{ game:'frogger', phase, level:G.level, winner, frozen:(G.freezeUntil>now), freezeLeft:Math.max(0,Math.ceil((G.freezeUntil-now)/1000)),
       players:[...G.birds.values()].map(b=>({ id:b.id,name:b.name,color:b.color,type:b.type,score:b.score,lives:b.lives,alive:!b.eliminated,connected:b.connected,
-        riding:!!b.riderOf, ridingName:b.riderOf?((G.birds.get(b.riderOf)||{}).name||''):null, carrying:!!b.carrying, rocket:!!b.hasRocket, shield:(b.shieldUntil>now), egg:!!b.carryingEgg,
+        riding:!!b.riderOf, ridingName:b.riderOf?((G.birds.get(b.riderOf)||{}).name||''):null, carrying:!!b.carrying, inv:b.inv.slice(), rocket:invHas(b,'rocket'), shield:(b.shieldUntil>now), egg:invHas(b,'egg'),
         rideLeft:b.riderOf?Math.max(0,Math.ceil((b.rideUntil-now)/1000)):0 })) });
   }
 
@@ -555,6 +585,17 @@
     box(cx,cy,2,w,40,30,'#d23b3b'); box(cx,cy,32,w-12,30,6,'#9c2a2a');
     for(let i=-w/2+18;i<w/2-10;i+=26){ box(cx+i,cy,14,14,42,16,'#bfe7ff'); }   // windows strip
     box(cx+dir*(w/2-6),cy,2,10,40,34,'#f2c14e'); box(cx+dir*(w/2+2),cy,16,5,18,12,'#fff3b0'); ctx.restore(); }
+  function mUfo(cx,cy,beam){ const [sx,sy]=v3(cx,cy,2); const t=performance.now()/1000, uy=sy-118*S+Math.sin(t*3)*4*S;
+    if(beam>0){ ctx.save(); ctx.globalAlpha=0.34*beam; const g=ctx.createLinearGradient(0,uy,0,sy); g.addColorStop(0,'rgba(168,255,96,.9)'); g.addColorStop(1,'rgba(168,255,96,0)'); ctx.fillStyle=g;
+      ctx.beginPath(); ctx.moveTo(sx-11*S,uy+8*S); ctx.lineTo(sx+11*S,uy+8*S); ctx.lineTo(sx+36*S,sy); ctx.lineTo(sx-36*S,sy); ctx.closePath(); ctx.fill(); ctx.restore(); }
+    ctx.save(); ctx.translate(sx,uy); ctx.scale(S,S);
+    ctx.fillStyle='rgba(168,255,96,.25)'; ctx.beginPath(); ctx.ellipse(0,0,42,18,0,0,7); ctx.fill();
+    ctx.fillStyle='#8b97a6'; ctx.beginPath(); ctx.ellipse(0,1,33,11,0,0,7); ctx.fill();
+    ctx.fillStyle='#c7d2dd'; ctx.beginPath(); ctx.ellipse(0,-1,21,8,0,0,7); ctx.fill();
+    ctx.fillStyle='#a8ffe0'; ctx.beginPath(); ctx.ellipse(0,-7,12,10,0,Math.PI,0); ctx.fill();   // dome
+    ctx.fillStyle='rgba(255,255,255,.55)'; ctx.beginPath(); ctx.ellipse(-4,-9,3,3,0,0,7); ctx.fill();
+    const cols=['#ff5c8a','#ffd166','#7dd3fc','#a8ff60']; for(let i=0;i<7;i++){ ctx.fillStyle=cols[(i+Math.floor(t*6))%4]; ctx.beginPath(); ctx.arc(-26+i*8.6,5,2.3,0,7); ctx.fill(); }   // chasing lights
+    ctx.restore(); }
 
   // ---- ground ----
   function drawGround(r){ const cx=WORLD_W/2, cy=r.wy, fullW=WORLD_W+GROUND_EXT*2;
@@ -586,19 +627,26 @@
       if(G.train && rows[G.train.lane]){ const T=G.train, ry=rows[T.lane].wy;
         if(T.phase==='warn'){ sprites.push({wy:ry+1,draw:()=>{ if(Math.floor(performance.now()/180)%2===0){ const cx=WORLD_W/2; quad(cx,ry,WORLD_W+GROUND_EXT*2,LANE_DEPTH,0.6,'rgba(255,60,60,.32)'); } }}); }
         else sprites.push({wy:ry+3,draw:()=>mTrain(T.x,ry,T.dir,T.w)}); }
+      if(G.ufo && rows[G.ufo.hlane]){ const U=G.ufo, ry=rows[U.hlane].wy, beam=U.phase==='beam'?1:(U.phase==='in'?Math.min(1,(performance.now()-U.t0)/800):0); sprites.push({wy:-2e9,draw:()=>mUfo(U.hx,ry,beam)}); }
       const laneWy=(l)=>(rows.length-1-l)*LANE_DEPTH, arc=(h)=>Math.sin((1-h)*Math.PI)*18;   // smooth up-and-over hop
       for(const b of G.birds.values()){ if(b.eliminated) continue; if(b.vx==null){ b.vx=b.wx; b.vly=b.laneIndex; }
         const flying=!!b.launch;
         let wx=b.vx, wy=laneWy(b.vly), z=flying?(b.launchZ||0):arc(b.hop), ride=false;
         if(b.riderOf){ const c=G.birds.get(b.riderOf); if(c){ wx=(c.vx==null?c.wx:c.vx); wy=laneWy(c.vly==null?c.laneIndex:c.vly); z=arc(c.hop)+24; ride=true; } }
         const blink=!flying && performance.now()<b.invulnUntil && b.invulnUntil<1e14 && !(performance.now()<b.shieldUntil) && Math.floor(performance.now()/100)%2===0;
-        const shielded=performance.now()<b.shieldUntil, egg=b.carryingEgg;
+        const shielded=performance.now()<b.shieldUntil, egg=invHas(b,'egg');
         sprites.push({wy: flying ? -1e9 : wy-(ride?2:0), draw:()=>{
           if(flying){ mFlyingRocket(wx,wy,z); drawBird(b.type,b.color,wx,wy,z); if(egg) mCarriedEgg(wx,wy,z); nameTag(b,wx,wy,z); return; }
           if(!blink){ const [sx,sy]=v3(wx,wy,0.5); ctx.fillStyle='rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(sx,sy,20*S,9*S,0,0,7); ctx.fill(); drawBird(b.type,b.color,wx,wy,z); if(egg) mCarriedEgg(wx,wy,z); if(shielded) mBubble(wx,wy,z); }
           nameTag(b,wx,wy,z); }}); } }
     sprites.sort((a,b)=>b.wy-a.wy); for(const s of sprites) s.draw();
-    if(G && G.freezeUntil && performance.now()<G.freezeUntil){ ctx.fillStyle='rgba(180,225,255,.18)'; ctx.fillRect(0,0,CW,CH); }   // frozen tint
+    if(G && G.freezeUntil && performance.now()<G.freezeUntil){ const rem=G.freezeUntil-performance.now(), secs=Math.ceil(rem/1000), frac=(rem%1000)/1000, pop=1+frac*0.32;
+      ctx.fillStyle='rgba(180,225,255,.20)'; ctx.fillRect(0,0,CW,CH);   // frozen tint
+      ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.font="900 30px Anton, sans-serif"; ctx.lineWidth=8; ctx.strokeStyle='#0c2a3a'; ctx.strokeText('❄ TIME FROZEN ❄',CW/2,CH*0.20); ctx.fillStyle='#7dd3fc'; ctx.fillText('❄ TIME FROZEN ❄',CW/2,CH*0.20);
+      ctx.translate(CW/2,CH*0.36); ctx.scale(pop,pop);
+      ctx.font="900 160px Anton, sans-serif"; ctx.lineWidth=16; ctx.strokeStyle='#0c2a3a'; ctx.strokeText(secs,0,0);
+      ctx.fillStyle = secs<=3 ? '#ff7a7a' : '#bdf0ff'; ctx.fillText(secs,0,0); ctx.restore(); ctx.textBaseline='alphabetic'; }
     if(G) drawLeaderboard(); drawFlash();
   }
   function drawLeaderboard(){ const list=[...G.birds.values()].sort((a,b)=>b.score-a.score);
@@ -622,8 +670,8 @@
   let __aiTicks=0, __hops=0;
   window.__ai = (on)=>{ AI_ON = (on !== false); return AI_ON; };
   window.__launch = (slow)=>{ const b=[...G.birds.values()].find(x=>!x.eliminated&&!x.launch); if(!b) return 'none'; rocketLaunch(b); if(slow&&b.launch) b.launch.dur=3200; return b.name; };   // test: force a rocket flight (slow=longer for screenshots)
-  window.__jump = (n)=>{ if(!G) return 'no game'; G.level=Math.max(1,n|0); G.levelMult=1+(G.level-1)*0.15; G.rows=buildRows(G.level); G.fish=[false,false,false,false,false]; G.levelClearUntil=0; G.freezeUntil=0; G.train=null; G.nextTrain=performance.now()+6000; G.birds.forEach(b=>{ if(!b.eliminated){ b.hasRocket=false; b.carryingEgg=false; b.shieldUntil=0; spawnBird(b,true); } }); placeItems(); flash('LEVEL '+G.level+'!','#ffd166'); SFX.level(); broadcast(true); return G.level; };   // demo: fast-forward to a level
-  window.__dbg = ()=> !G ? {lvl:0,phase,roster:roster.size,room:ROOM,conn:socket.connected,birds:[]} : { lvl:G.level, fish:G.fish.filter(Boolean).length, ai:AI_ON, phase, clearing:clearing(), items:(G.items||[]).map(it=>({t:it.type,vis:it.visible})), frozen:G.freezeUntil>performance.now(), train:G.train?G.train.phase:null, ticks:__aiTicks, hops:__hops, birds:[...G.birds.values()].map(b=>({ n:b.name, lane:b.laneIndex, kind:(G.rows[b.laneIndex]||{}).kind, rk:!!b.hasRocket, sh:performance.now()<b.shieldUntil, egg:!!b.carryingEgg, wx:Math.round(b.wx), sc:b.score, d:b.deaths||0, dead:!!b.deadAt })) };
+  window.__jump = (n)=>{ if(!G) return 'no game'; G.level=Math.max(1,n|0); G.levelMult=1+(G.level-1)*0.15; G.rows=buildRows(G.level); G.fish=[false,false,false,false,false]; G.levelClearUntil=0; G.freezeUntil=0; G.train=null; G.nextTrain=performance.now()+6000; G.ufo=null; G.nextUfo=performance.now()+6000; G.birds.forEach(b=>{ if(!b.eliminated){ b.inv=[]; b.shieldUntil=0; b.beamed=false; spawnBird(b,true); } }); placeItems(); flash('LEVEL '+G.level+'!','#ffd166'); SFX.level(); broadcast(true); return G.level; };   // demo: fast-forward to a level
+  window.__dbg = ()=> !G ? {lvl:0,phase,roster:roster.size,room:ROOM,conn:socket.connected,birds:[]} : { lvl:G.level, fish:G.fish.filter(Boolean).length, ai:AI_ON, phase, clearing:clearing(), items:(G.items||[]).map(it=>({t:it.type,vis:it.visible})), frozen:G.freezeUntil>performance.now(), train:G.train?G.train.phase:null, ticks:__aiTicks, hops:__hops, birds:[...G.birds.values()].map(b=>({ n:b.name, lane:b.laneIndex, kind:(G.rows[b.laneIndex]||{}).kind, inv:(b.inv||[]).slice(), sh:performance.now()<b.shieldUntil, wx:Math.round(b.wx), sc:b.score, d:b.deaths||0, dead:!!b.deadAt })) };
   function roadClear(lane, wx){
     const v = lane.dir*lane.speed*G.levelMult;        // px/s
     for(const e of lane.ents){
@@ -691,8 +739,8 @@
     if(!AI_ON || !G || phase!=='playing' || clearing()) return;
     __aiTicks++;
     for(const b of G.birds.values()){
-      if(b.eliminated || b.deadAt || b.riderOf || b.launch) continue;
-      if(b.hasRocket){ b.hasRocket=false; rocketLaunch(b); continue; }                 // demo bots cash in a rocket immediately (no phone to tap)
+      if(b.eliminated || b.deadAt || b.riderOf || b.launch || b.beamed) continue;
+      if(invHas(b,'rocket')){ invUseOne(b,'rocket'); rocketLaunch(b); continue; }       // demo bots cash in a rocket immediately (no phone to tap)
       if(Math.abs((b.vly==null?b.laneIndex:b.vly) - b.laneIndex) > 0.34) continue;   // still mid-hop
       if(b.aiNext && now < b.aiNext) continue;
       b.aiNext = now + 55 + Math.random()*95;                                         // quick, staggered reactions for the high-level pace

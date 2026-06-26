@@ -148,9 +148,16 @@
   .ride { text-align:center; border-radius:16px; padding:12px; font-weight:800; background:var(--panel); border:2px solid var(--panel-2); min-height:54px; display:flex; align-items:center; justify-content:center; }
   .ride.active { border-color:var(--teal); box-shadow:0 0 0 3px color-mix(in srgb, var(--teal) 30%, transparent); color:var(--teal); }
   .jumpoff { display:none; margin-top:10px; padding:14px; font-size:20px; background:var(--teal); color:#06231a; }
-  .rocketbtn { margin-top:10px; padding:16px; font-size:21px; color:#2a1500; border:none;
-    background:linear-gradient(135deg,#ffd166,#ff8a3c,#ff5c49); box-shadow:0 0 0 3px rgba(255,209,102,.45), 0 6px 18px rgba(255,90,73,.4); animation:rkpulse 1s ease-in-out infinite; }
-  @keyframes rkpulse { 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.045); } }
+  @keyframes rkpulse { 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.05); } }
+  .invbar { display:none; gap:10px; margin-top:10px; justify-content:center; }
+  .invbar.show { display:flex; }
+  .invslot { width:33%; max-width:96px; aspect-ratio:1/1; border-radius:16px; display:flex; align-items:center; justify-content:center;
+    font-size:34px; background:var(--panel); border:2px dashed var(--panel-2); color:var(--muted); }
+  .invslot.rocket { background:linear-gradient(135deg,#ffd166,#ff8a3c,#ff5c49); border:none; color:#2a1500; cursor:pointer;
+    box-shadow:0 0 0 3px rgba(255,209,102,.45), 0 5px 16px rgba(255,90,73,.4); animation:rkpulse 1s ease-in-out infinite; }
+  .invslot.rocket:active { transform:scale(.92); }
+  .invslot.egg { background:linear-gradient(135deg,#fff1b8,#ffd24a,#e0962a); border:none; }
+  .invslot .ct { font-size:13px; font-weight:900; position:absolute; }
   .swipepad { flex:1; margin-top:8px; min-height:46vh; border-radius:24px; background:radial-gradient(120% 100% at 50% 0%, color-mix(in srgb, var(--me) 16%, var(--panel)), var(--panel)); border:2px solid var(--panel-2);
     display:flex; align-items:center; justify-content:center; touch-action:none; user-select:none; transition:background .12s ease, border-color .12s ease; }
   .swipepad.live { border-color:var(--me); box-shadow:inset 0 0 0 3px color-mix(in srgb, var(--me) 30%, transparent); }
@@ -390,7 +397,7 @@
   </div>
   <div class="ride" id="fRide">Cross the road, ride the logs, grab the fish!</div>
   <button id="jumpOff" class="btn jumpoff">JUMP OFF 🪂</button>
-  <button id="rocketBtn" class="btn rocketbtn" style="display:none">🚀 LAUNCH TO THE FINISH!</button>
+  <div id="invBar" class="invbar"></div>
   <div class="swipepad" id="swipePad">
     <div class="swipehint"><div class="ar">↑</div><div class="lbl">swipe to hop<br><small>tap = forward</small></div><div class="ar">↓</div></div>
   </div>
@@ -765,8 +772,21 @@
     pad.addEventListener('pointerleave', e=>{ if(active) up(e); });
   })();
   $('jumpOff').addEventListener('click', ()=>socket.emit('ctrl:ride'));
-  $('rocketBtn').addEventListener('click', ()=>socket.emit('ctrl:rocket'));
   $('fAgainBtn').addEventListener('click', ()=>socket.emit('ctrl:rematch'));
+  // Inventory bar: up to 3 small squares (rockets are tappable to launch, eggs are passive).
+  // Only rebuild when the inventory actually changes, so the rocket pulse animation doesn't reset.
+  let lastInvSig=null;
+  function renderInv(inv, canPlay){
+    const bar=$('invBar'); inv=inv||[];
+    const sig = canPlay ? inv.join(',') : '__off';
+    if(sig===lastInvSig) return; lastInvSig=sig;
+    if(!canPlay || !inv.length){ bar.classList.remove('show'); bar.innerHTML=''; return; }
+    bar.innerHTML='';
+    inv.forEach(t=>{ const s=document.createElement('div'); s.className='invslot '+t; s.textContent = t==='rocket'?'🚀':'🥚';
+      if(t==='rocket') s.addEventListener('click', ()=>socket.emit('ctrl:rocket'));
+      bar.appendChild(s); });
+    bar.classList.add('show');
+  }
 
   function froggerState(state){
     const mine = state.players.find(p=>p.id===me.id);
@@ -777,8 +797,8 @@
       $('fLives').textContent = mine.alive ? '❤️'.repeat(Math.max(0,mine.lives)) : 'OUT'; }
     const riding = mine&&mine.riding, carrying = mine&&mine.carrying, dead = mine&&!mine.alive, hasRocket = mine&&mine.rocket, hasEgg = mine&&mine.egg, hasShield = mine&&mine.shield, rideEl=$('fRide');
     if(state.phase==='over'){ rideEl.classList.remove('active'); rideEl.textContent = state.winner ? (state.winner.id===me.id?'🏆 You win!':state.winner.name+' wins!') : 'Game over'; }
-    else if(state.frozen){ rideEl.classList.add('active'); rideEl.textContent='⏱ TIME FROZEN — GO GO GO!'; }
-    else if(hasRocket){ rideEl.classList.add('active'); rideEl.textContent='🚀 You grabbed a ROCKET — tap LAUNCH for a free point!'; }
+    else if(state.frozen){ rideEl.classList.add('active'); rideEl.textContent='⏱ TIME FROZEN — '+(state.freezeLeft||0)+'s — GO GO GO!'; }
+    else if(hasRocket){ rideEl.classList.add('active'); rideEl.textContent='🚀 Tap a rocket to launch to the finish!'; }
     else if(hasEgg){ rideEl.classList.add('active'); rideEl.textContent='🥚 GOLDEN EGG — reach the finish for 3× points!'; }
     else if(riding){ rideEl.classList.add('active'); rideEl.textContent='🪂 Riding '+(mine.ridingName||'a buddy')+' — '+mine.rideLeft+'s'; }
     else if(carrying){ rideEl.classList.remove('active'); rideEl.textContent='🐤 Giving a buddy a ride!'; }
@@ -786,7 +806,7 @@
     else if(dead){ rideEl.classList.remove('active'); rideEl.textContent='Knocked out — watch the TV!'; }
     else { rideEl.classList.remove('active'); rideEl.textContent='Cross the road, ride the logs, grab the fish!'; }
     $('jumpOff').style.display = riding ? 'block' : 'none';
-    $('rocketBtn').style.display = (hasRocket && state.phase==='playing' && mine.alive) ? 'block' : 'none';
+    renderInv(mine&&mine.inv, state.phase==='playing' && mine && mine.alive && !riding);
     const canMove = state.phase==='playing' && mine && mine.alive && !riding;
     fgCanMove = canMove;
     const pad=$('swipePad'); pad.classList.toggle('live', canMove); pad.classList.toggle('dead', !canMove);
