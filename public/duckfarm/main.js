@@ -1,7 +1,7 @@
 // Duck Farm — cozy world-builder. Farm + town, quests, shops, NPCs, day/night.
 import { buildArt, TILE, BREEDS, BREED_BY_ID, personFrames } from './art.js';
 import { rawArea, AREA_DEFS, areaTitle, SOLID, MAP_LAYOUT } from './world.js';
-import { CROPS, CROP_ORDER, QUESTS, xpForLevel, FISH, FISH_ORDER, FISH_POOLS, biomePool } from './data.js';
+import { CROPS, CROP_ORDER, QUESTS, xpForLevel, FISH, FISH_ORDER, FISH_POOLS, biomePool, seasonFor, SEASON_ICON } from './data.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -35,6 +35,7 @@ let toast = '', toastT = 0;
 let dlg = null, dlgI = 0;                      // active dialogue
 let fishing = null;                            // active fishing minigame
 let muted = false;
+let weather = 'clear', weatherT = 25;          // 'clear' | 'rain' | 'snow'
 
 function prepArea(a) {
   a.blocked = new Set();
@@ -561,13 +562,31 @@ function draw() {
   }
   // penguin diving in surface water (on land maps)
   if (player.mount?.kind === 'penguin' && onWater()) { ctx.fillStyle = 'rgba(38,116,176,0.42)'; ctx.fillRect(0, 0, canvas.width, canvas.height); bubbles(); }
+  drawSeasonWeather();
   if (festivalDay() && current === 'quack') drawFestivalBanner();
   drawLabels(); drawTopHUD();
+}
+function drawSeasonWeather() {
+  if (area.biome === 'interior' || area.biome === 'underwater' || area.biome === 'cave') return;
+  const s = seasonFor(clock), W = canvas.width, H = canvas.height;
+  const tint = { spring: [150, 230, 170, 0.05], summer: [255, 235, 150, 0.05], autumn: [235, 150, 70, 0.13], winter: [185, 212, 255, 0.15] }[s];
+  if (tint) { ctx.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${tint[3]})`; ctx.fillRect(0, 0, W, H); }
+  if (weather === 'rain') {
+    ctx.fillStyle = 'rgba(40,60,90,0.18)'; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(185,205,235,0.5)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let i = 0; i < 70; i++) { const x = (i * 53 + clock * 230) % (W + 40) - 20, y = ((i * 89 + clock * 540) % (H + 40)) - 20; ctx.moveTo(x, y); ctx.lineTo(x - 3, y + 8); } ctx.stroke();
+  } else if (weather === 'snow') {
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    for (let i = 0; i < 60; i++) { const x = (i * 61 + Math.sin((clock + i) * 0.6) * 14 + clock * 22) % (W + 20) - 10, y = ((i * 43 + clock * 60) % (H + 20)) - 10; ctx.fillRect(x | 0, y | 0, 2, 2); }
+  } else if (s === 'autumn' || s === 'spring') {   // gentle drifting leaves / petals
+    ctx.fillStyle = s === 'autumn' ? 'rgba(214,140,60,0.85)' : 'rgba(255,190,215,0.85)';
+    for (let i = 0; i < 16; i++) { const x = (i * 97 + Math.sin((clock + i) * 0.8) * 22 + clock * 16) % (W + 20) - 10, y = ((i * 57 + clock * 34) % (H + 20)) - 10; ctx.fillRect(x | 0, y | 0, 3, 3); }
+  }
 }
 function drawTopHUD() {
   ctx.fillStyle = 'rgba(18,26,38,0.82)'; ctx.fillRect(0, 0, canvas.width, 12);
   ctx.font = '8px monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = '#fff';
-  ctx.fillText(`🪙${coins}  🥚${eggs}  🐟${fishCount()}  🦆${ducks.length}  ${todIcon()}`, 3, 6);
+  ctx.fillText(`🪙${coins}  🥚${eggs}  🐟${fishCount()}  🦆${ducks.length}  ${todIcon()} ${SEASON_ICON[seasonFor(clock)]}${weather === 'rain' ? '🌧️' : weather === 'snow' ? '🌨️' : ''}`, 3, 6);
   const q = QUESTS[questIndex];
   if (q) { const tx = `★ ${q.text}  ${Math.min(statVal(q.stat), q.goal)}/${q.goal}`; const w = ctx.measureText(tx).width + 8;
     ctx.fillStyle = 'rgba(18,26,38,0.82)'; ctx.fillRect(0, canvas.height - 11, w, 11); ctx.fillStyle = '#cfe6d0'; ctx.fillText(tx, 3, canvas.height - 5); }
@@ -700,7 +719,9 @@ function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (state === 'title') { drawTitle(now); requestAnimationFrame(loop); return; }
   if (state === 'map') { draw(); drawMap(); requestAnimationFrame(loop); return; }
-  if (state === 'play') { clock += dt; tod = (tod + dt / DAY_LEN) % 1; if (toastT > 0) toastT -= dt; if (warpCooldown > 0) warpCooldown -= dt; updatePlayers(dt); updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); checkQuests(); fitView(dt); }
+  if (state === 'play') { clock += dt; tod = (tod + dt / DAY_LEN) % 1; if (toastT > 0) toastT -= dt; if (warpCooldown > 0) warpCooldown -= dt;
+    if ((weatherT -= dt) <= 0) { const s = seasonFor(clock); weather = s === 'winter' ? (Math.random() < 0.6 ? 'snow' : 'clear') : (Math.random() < 0.3 ? 'rain' : 'clear'); weatherT = 28 + Math.random() * 34; }
+    updatePlayers(dt); updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); checkQuests(); fitView(dt); }
   if (state === 'fishing') { updateFishing(dt); updateNPCs(dt); }
   draw(); if (state === 'fishing') drawFishing(); updatePanel(); requestAnimationFrame(loop);
 }

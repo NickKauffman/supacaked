@@ -1,5 +1,11 @@
 // Duck Farm — content definitions: crops, quests.
 
+// Seasons cycle over real time; each lasts SEASON_LEN seconds.
+export const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
+export const SEASON_LEN = 200;
+export const seasonFor = (clock) => SEASONS[Math.floor(clock / SEASON_LEN) % 4];
+export const SEASON_ICON = { spring: '🌸', summer: '☀️', autumn: '🍂', winter: '❄️' };
+
 // Crops: planted on tilled dirt. cost = coins to plant, sell = coins per harvest,
 // grow = seconds to ripen, xp = xp on harvest, level = farmer level to unlock.
 export const CROPS = {
