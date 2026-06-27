@@ -49,19 +49,35 @@ export const xpForLevel = (lvl) => 12 + lvl * 10;
 
 // Sequential quests. `stat` names a tracked counter / derived value; when it
 // reaches `goal`, the quest completes and grants the reward, then the next begins.
+// A guided journey: learn the farm, head into town, then tour the whole world.
+// stat 'visit' + `area` completes when that area is first entered (tracked in main.js).
+// Quests advance in order, so exploring out of order still ticks them off in a cascade.
 export const QUESTS = [
-  { id: 'plant',    text: 'Plant your first crop',          stat: 'planted',       goal: 1,   reward: { coins: 12, xp: 5 } },
-  { id: 'harvest5', text: 'Harvest 5 crops',                stat: 'harvested',     goal: 5,   reward: { coins: 18, xp: 8 } },
-  { id: 'feed',     text: 'Feed a hungry duck',             stat: 'fed',           goal: 1,   reward: { coins: 10, xp: 5 } },
-  { id: 'eggs10',   text: 'Collect 10 eggs',                stat: 'eggsCollected', goal: 10,  reward: { coins: 22, xp: 10 } },
-  { id: 'sell',     text: 'Sell goods at the barn',         stat: 'sold',          goal: 1,   reward: { coins: 15, xp: 8 } },
-  { id: 'fish1',    text: 'Catch your first fish',          stat: 'caught',        goal: 1,   reward: { coins: 15, xp: 8 } },
-  { id: 'donate',   text: 'Donate a fish to the Museum',    stat: 'donated',       goal: 1,   reward: { coins: 25, xp: 12 } },
-  { id: 'ducks8',   text: 'Raise a flock of 8 ducks',       stat: 'ducks',         goal: 8,   reward: { coins: 30, xp: 15 } },
-  { id: 'lvl3',     text: 'Reach farmer level 3',           stat: 'level',         goal: 3,   reward: { coins: 40, xp: 0 } },
-  { id: 'berry',    text: 'Harvest a juicy berry',          stat: 'berryHarvest',  goal: 1,   reward: { coins: 35, xp: 15 } },
-  { id: 'fish10',   text: 'Catch 10 fish in all',           stat: 'caught',        goal: 10,  reward: { coins: 45, xp: 22 } },
-  { id: 'breeds',   text: 'Discover all 5 duck breeds',     stat: 'breeds',        goal: 5,   reward: { coins: 60, xp: 30 } },
-  { id: 'coins250', text: 'Save up 250 coins',              stat: 'coins',         goal: 250, reward: { coins: 0,  xp: 40 } },
-  { id: 'ducks15',  text: 'Grow your farm to 15 ducks',     stat: 'ducks',         goal: 15,  reward: { coins: 90, xp: 50 } },
+  // — learning the farm —
+  { id: 'plant',    text: 'Plant your first crop',                  stat: 'planted',       goal: 1,   reward: { coins: 12, xp: 5 } },
+  { id: 'harvest5', text: 'Harvest 5 crops',                        stat: 'harvested',     goal: 5,   reward: { coins: 18, xp: 8 } },
+  { id: 'feed',     text: 'Feed a hungry duck',                     stat: 'fed',           goal: 1,   reward: { coins: 10, xp: 5 } },
+  { id: 'eggs10',   text: 'Collect 10 fresh eggs',                  stat: 'eggsCollected', goal: 10,  reward: { coins: 22, xp: 10 } },
+  { id: 'sell',     text: 'Sell goods at the Barn',                 stat: 'sold',          goal: 1,   reward: { coins: 15, xp: 8 } },
+  // — into town —
+  { id: 'town',     text: 'Follow the road south to Quacksborough', stat: 'visit', area: 'quack',    goal: 1, reward: { coins: 20, xp: 10 } },
+  { id: 'fish1',    text: 'Cast a line and catch a fish',           stat: 'caught',        goal: 1,   reward: { coins: 18, xp: 10 } },
+  { id: 'donate',   text: 'Donate a fish to the Quack Museum',      stat: 'donated',       goal: 1,   reward: { coins: 25, xp: 12 } },
+  { id: 'ride',     text: 'Ride a mount from the Duck Emporium',    stat: 'rode',          goal: 1,   reward: { coins: 25, xp: 12 } },
+  // — the grand tour of the world —
+  { id: 'meadow',   text: 'Stroll east to Sunny Meadow',            stat: 'visit', area: 'meadow',   goal: 1, reward: { coins: 25, xp: 12 } },
+  { id: 'beach',    text: 'Reach the seaside town of Sandyshores',  stat: 'visit', area: 'sunny',    goal: 1, reward: { coins: 30, xp: 14 } },
+  { id: 'dive',     text: 'Dive to the sunken city of Bubbletown',  stat: 'visit', area: 'bubble',   goal: 1, reward: { coins: 40, xp: 18 } },
+  { id: 'desert',   text: 'Trek to Dusty Gulch in the desert',      stat: 'visit', area: 'dunes',    goal: 1, reward: { coins: 35, xp: 16 } },
+  { id: 'forest',   text: 'Venture south through Maple Forest',     stat: 'visit', area: 'maple',    goal: 1, reward: { coins: 30, xp: 14 } },
+  { id: 'cavern',   text: 'Brave the dark Mossy Cavern',            stat: 'visit', area: 'cave',     goal: 1, reward: { coins: 40, xp: 18 } },
+  { id: 'peak',     text: 'Climb to Pinnacle Village',              stat: 'visit', area: 'pinnacle', goal: 1, reward: { coins: 45, xp: 20 } },
+  { id: 'snow',     text: 'Reach the snow town of Frostfall',       stat: 'visit', area: 'frost',    goal: 1, reward: { coins: 50, xp: 22 } },
+  { id: 'glacier',  text: 'Discover the icy Glacier Depths',        stat: 'visit', area: 'glacier',  goal: 1, reward: { coins: 60, xp: 26 } },
+  // — mastery (the long game) —
+  { id: 'ducks8',   text: 'Raise a flock of 8 ducks',               stat: 'ducks',         goal: 8,   reward: { coins: 30,  xp: 15 } },
+  { id: 'breeds',   text: 'Discover all 5 duck breeds',             stat: 'breeds',        goal: 5,   reward: { coins: 60,  xp: 30 } },
+  { id: 'explorer', text: 'Explore all 11 corners of the world',    stat: 'places',        goal: 11,  reward: { coins: 120, xp: 50 } },
+  { id: 'ducks15',  text: 'Grow a grand flock of 15 ducks',         stat: 'ducks',         goal: 15,  reward: { coins: 90,  xp: 40 } },
+  { id: 'rich',     text: 'Save up 300 coins',                      stat: 'coins',         goal: 300, reward: { coins: 0,   xp: 50 } },
 ];

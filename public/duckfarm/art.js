@@ -50,6 +50,11 @@ function toCanvas(b) {
   }
   ctx.putImageData(img, 0, 0); return c;
 }
+// lighten/darken a #rrggbb by factor f (auto-derive shading tones from one base colour)
+function shade(hex, f) {
+  const v = (i) => Math.max(0, Math.min(255, Math.round(parseInt(hex.slice(i, i + 2), 16) * f)));
+  return '#' + [v(1), v(3), v(5)].map((n) => n.toString(16).padStart(2, '0')).join('');
+}
 
 /* ---------------- palette ---------------- */
 const C = {
@@ -197,25 +202,51 @@ function duck(breed, frame) {
 
 /* ---------------- people (farmer + NPCs) ---------------- */
 // A parametric character. Pass a palette to make distinct townsfolk.
+// No default hat: townsfolk show their own hair colour for variety. A pal that
+// wants a hat (e.g. the purple mayor) sets one explicitly.
 const FARMER = { skinL: C.skinL, skin: C.skin, skinD: C.skinD, hair: '#6b4f3a',
-  shirtL: C.shirtL, shirt: C.shirt, shirtD: C.shirtD, pants: C.pants, pantsD: C.pantsD,
-  hat: C.hat, hatL: C.hatL, hatD: C.hatD };
+  shirtL: C.shirtL, shirt: C.shirt, shirtD: C.shirtD, pants: C.pants, pantsD: C.pantsD };
+// A detailed 16x20 character (feet at the bottom). One palette → distinct townsfolk.
+// dir: 'down' | 'up' | 'side' (side faces RIGHT; the draw code flips for left).
 function person(p, dir, frame) {
-  const b = buf();
-  const legY = 12;
-  const lx = frame === 1 ? [4, 9] : frame === 2 ? [6, 9] : [5, 9];
-  rect(b, lx[0], legY, 2, 3, p.pants); rect(b, lx[1], legY, 2, 3, p.pants);
-  rect(b, lx[0], legY + 3, 2, 1, p.pantsD); rect(b, lx[1], legY + 3, 2, 1, p.pantsD);
-  blob(b, 8, 9.5, 3.6, 2.8, p.shirtL, p.shirt, p.shirtD);
-  set(b, 4, 9, p.skin); set(b, 4, 10, p.skinD); set(b, 11, 9, p.skin); set(b, 11, 10, p.skinD);
-  blob(b, 8, 5.5, 3.2, 3, p.skinL, p.skin, p.skinD);
-  if (dir === 'down') { set(b, 6, 5, C.ink); set(b, 10, 5, C.ink); }
-  else if (dir === 'side') { rect(b, 5, 3, 6, 4, p.skin); set(b, 6, 5, C.ink); }
-  else { rect(b, 5, 4, 6, 3, p.hair); }
-  if (p.hat) { blob(b, 8, 3, 3.4, 1.7, p.hatL, p.hat, p.hatD); rect(b, 4, 4, 8, 1, p.hatD); }
-  else { blob(b, 8, 3.4, 3.3, 2, p.hair, p.hair, p.hair); rect(b, 5, 3, 6, 1, p.hair); } // hair cap
-  outline(b);
-  return toCanvas(b);
+  const b = buf(16, 20);
+  const sk = p.skin, skL = p.skinL || shade(sk, 1.16), skD = p.skinD || shade(sk, 0.82);
+  const hr = p.hair, hrL = p.hairL || shade(hr, 1.32), hrD = p.hairD || shade(hr, 0.66);
+  const sh = p.shirt, shL = p.shirtL || shade(sh, 1.3), shD = p.shirtD || shade(sh, 0.72);
+  const pa = p.pants || C.pants, paD = p.pantsD || shade(pa, 0.72);
+  const shoe = p.shoe || '#3f342a';
+  // ---- legs: stride by alternating which foot reaches lower ----
+  const lB = frame === 1 ? 19 : frame === 2 ? 17 : 18;
+  const rB = frame === 2 ? 19 : frame === 1 ? 17 : 18;
+  rect(b, 5, 15, 2, lB - 15, pa); rect(b, 5, 15, 1, lB - 15, paD);
+  rect(b, 9, 15, 2, rB - 15, pa); rect(b, 10, 15, 1, rB - 15, paD);
+  rect(b, 5, lB - 1, 2, 1, shoe); rect(b, 9, rB - 1, 2, 1, shoe);
+  // ---- arms (down both sides; hands in skin) ----
+  rect(b, 3, 10, 2, 4, sh); rect(b, 3, 10, 1, 4, shD); set(b, 3, 14, skD); set(b, 4, 14, sk);
+  rect(b, 11, 10, 2, 4, sh); rect(b, 12, 10, 1, 4, shD); set(b, 11, 14, sk); set(b, 12, 14, skD);
+  // ---- torso ----
+  blob(b, 8, 12.5, 3.6, 2.9, shL, sh, shD);
+  rect(b, 5, 10, 6, 1, shD);                                  // shoulder seam
+  // ---- head ----
+  blob(b, 8, 6, 4, 4.1, skL, sk, skD);
+  if (dir === 'up') {                                         // back of the head: all hair
+    rect(b, 4, 2, 8, 7, hr); rect(b, 4, 2, 8, 1, hrL); rect(b, 5, 3, 3, 1, hrL);
+  } else if (dir === 'side') {                                // profile facing right
+    rect(b, 4, 2, 7, 3, hr); rect(b, 4, 2, 3, 7, hr); set(b, 5, 3, hrL);
+    set(b, 10, 7, C.ink); set(b, 12, 7, skD); set(b, 9, 8, '#ff9db0');
+  } else {                                                    // facing the camera
+    rect(b, 4, 2, 8, 2, hr); set(b, 3, 4, hr); set(b, 12, 4, hr);
+    rect(b, 4, 4, 1, 3, hr); rect(b, 11, 4, 1, 3, hr); rect(b, 5, 2, 4, 1, hrL);
+    set(b, 6, 7, C.ink); set(b, 10, 7, C.ink);               // eyes
+    set(b, 5, 8, '#ff9db0'); set(b, 11, 8, '#ff9db0');       // cheeks
+    set(b, 8, 9, skD);                                       // mouth
+  }
+  if (p.hat) {                                               // cap over the hair
+    const htL = p.hatL || shade(p.hat, 1.3), htD = p.hatD || shade(p.hat, 0.7);
+    blob(b, 8, 3.2, 3.9, 1.9, htL, p.hat, htD);
+    if (dir !== 'up') rect(b, 3, 4, 10, 1, htD);             // front brim
+  }
+  outline(b); return toCanvas(b);
 }
 const walkSet = (p, dir) => [person(p, dir, 1), person(p, dir, 0), person(p, dir, 2), person(p, dir, 0)];
 export function personFrames(p) {
@@ -223,21 +254,29 @@ export function personFrames(p) {
   return { down: walkSet(pal, 'down'), up: walkSet(pal, 'up'), side: walkSet(pal, 'side') };
 }
 
-// Haley — our heroine: auburn ponytail, rosy dress.
+// Haley — our heroine: auburn ponytail, rosy dress (16x20, feet at bottom).
 function haley(dir, frame) {
-  const b = buf();
-  const lx = frame === 1 ? [5, 9] : frame === 2 ? [6, 8] : [5, 9];
-  rect(b, lx[0], 13, 2, 2, C.hShoe); rect(b, lx[1], 13, 2, 2, C.hShoe);          // shoes
-  rect(b, 5, 10, 6, 1, C.hDress); rect(b, 4, 11, 8, 1, C.hDress); rect(b, 3, 12, 10, 1, C.hDressD); // flared skirt
-  blob(b, 8, 9, 3.3, 2.3, C.hDressL, C.hDress, C.hDressD);                        // bodice
-  set(b, 4, 9, C.skin); set(b, 4, 10, C.skinD); set(b, 11, 9, C.skin); set(b, 11, 10, C.skinD); // arms
-  blob(b, 8, 5.4, 3.2, 3, C.skinL, C.skin, C.skinD);                              // head
-  if (dir === 'up') { rect(b, 4, 3, 8, 4, C.hHair); }
-  else { rect(b, 4, 3, 8, 2, C.hHair); set(b, 4, 5, C.hHair); set(b, 11, 5, C.hHair);
-    if (dir === 'down') { set(b, 6, 5, C.ink); set(b, 10, 5, C.ink); set(b, 8, 7, C.hDress); }
-    else { set(b, 6, 5, C.ink); } }
-  rect(b, 11, 4, 2, 6, C.hHair); rect(b, 11, 4, 1, 6, C.hHairD); set(b, 12, 10, C.hHairD); // ponytail
-  set(b, 11, 3, C.bow); set(b, 12, 3, C.bow);                                     // hair bow
+  const b = buf(16, 20);
+  const sk = C.skinL, skM = C.skin, skD = C.skinD;
+  const hr = C.hHair, hrD = C.hHairD, hrL = shade(C.hHair, 1.3);
+  const dr = C.hDress, drL = C.hDressL, drD = C.hDressD;
+  const lB = frame === 1 ? 19 : frame === 2 ? 17 : 18;
+  const rB = frame === 2 ? 19 : frame === 1 ? 17 : 18;
+  // bare legs + shoes
+  rect(b, 6, 16, 2, lB - 16, skM); rect(b, 9, 16, 2, rB - 16, skM);
+  rect(b, 6, lB - 1, 2, 1, C.hShoe); rect(b, 9, rB - 1, 2, 1, C.hShoe);
+  // flared dress
+  rect(b, 6, 11, 4, 1, dr); rect(b, 5, 12, 6, 1, dr); rect(b, 4, 13, 8, 1, drD); rect(b, 4, 14, 8, 2, drD);
+  set(b, 6, 14, dr); set(b, 9, 14, dr);
+  blob(b, 8, 11, 3.2, 2.5, drL, dr, drD);                     // bodice
+  set(b, 4, 11, skM); set(b, 4, 12, skD); set(b, 11, 11, skM); set(b, 11, 12, skD); // arms
+  blob(b, 8, 6, 4, 4.1, sk, skM, skD);                        // head
+  if (dir === 'up') { rect(b, 4, 2, 8, 7, hr); rect(b, 5, 2, 4, 1, hrL); }
+  else if (dir === 'side') { rect(b, 4, 2, 7, 3, hr); rect(b, 4, 2, 3, 7, hr); set(b, 10, 7, C.ink); set(b, 12, 7, skD); set(b, 9, 8, '#ff9db0'); }
+  else { rect(b, 4, 2, 8, 2, hr); set(b, 3, 4, hr); set(b, 12, 4, hr); rect(b, 4, 4, 1, 4, hr); rect(b, 11, 4, 1, 4, hr); rect(b, 5, 2, 4, 1, hrL);
+    set(b, 6, 7, C.ink); set(b, 10, 7, C.ink); set(b, 5, 8, '#ff9db0'); set(b, 11, 8, '#ff9db0'); set(b, 8, 9, drD); }
+  rect(b, 11, 4, 2, 7, hr); rect(b, 11, 4, 1, 7, hrD); set(b, 12, 11, hrD);  // ponytail
+  set(b, 11, 3, C.bow); set(b, 12, 3, C.bow);                 // bow
   outline(b); return toCanvas(b);
 }
 const haleyWalk = (dir) => [haley(dir, 1), haley(dir, 0), haley(dir, 2), haley(dir, 0)];
@@ -463,6 +502,18 @@ function table() { const b = buf(); rect(b, 2, 6, 12, 3, C.wf2); rect(b, 2, 6, 1
 function bed() { const b = buf(16, 24); rect(b, 2, 4, 12, 18, '#c2455f'); rect(b, 2, 4, 12, 5, '#f2f2f0'); rect(b, 3, 5, 4, 3, '#e8eef6'); rect(b, 2, 4, 12, 1, '#fff'); rect(b, 2, 21, 12, 1, '#8a2f44'); outline(b, '#5a1f30'); return toCanvas(b); }
 function painting() { const b = buf(); rect(b, 2, 2, 12, 10, '#8a5e36'); rect(b, 3, 3, 10, 8, '#7fc6e8'); rect(b, 3, 8, 10, 3, '#7cc457'); disc(b, 11, 5, 1.5, 1.5, '#ffe25a'); outline(b, '#5a3d20'); return toCanvas(b); }
 function barrel() { const b = buf(); blob(b, 8, 9, 4, 5, C.wf1, C.wf2, C.wf3); rect(b, 4, 7, 8, 1, C.wf3); rect(b, 4, 11, 8, 1, C.wf3); outline(b, '#5a3d20'); return toCanvas(b); }
+// ---- richer interior furnishings (purpose-built rooms) ----
+function chair() { const b = buf(); rect(b, 4, 3, 8, 5, '#9a5fc4'); rect(b, 4, 3, 8, 1, '#caa0e0'); rect(b, 4, 3, 1, 5, '#71409e'); rect(b, 4, 8, 8, 2, C.wf2); rect(b, 4, 8, 8, 1, C.wf1); rect(b, 5, 10, 1, 4, C.wf3); rect(b, 10, 10, 1, 4, C.wf3); outline(b, '#3a2a4a'); return toCanvas(b); }
+function teacup() { const b = buf(16, 13); set(b, 7, 2, '#e8dcc8'); set(b, 9, 1, '#e8dcc8'); set(b, 8, 4, '#d8ccb8'); blob(b, 8, 9, 3.4, 2.6, '#ffffff', '#eef0f2', '#cfd2d6'); rect(b, 5, 7, 7, 1, '#b08a55'); set(b, 12, 9, '#cfd2d6'); rect(b, 5, 11, 6, 1, '#8a6a3f'); outline(b, '#8a8f98'); return toCanvas(b); }
+function plant() { const b = buf(16, 20); rect(b, 5, 14, 6, 5, C.t2); rect(b, 5, 14, 6, 1, C.t1); rect(b, 5, 18, 6, 1, C.t3); blob(b, 8, 9, 4.6, 5, C.e1, C.e2, C.e3); blob(b, 4, 11, 2.4, 2.4, C.e1, C.e2, C.e3); blob(b, 12, 11, 2.4, 2.4, C.e2, C.e3, C.e4); set(b, 8, 5, C.e1); set(b, 6, 7, C.e1); set(b, 10, 8, C.e1); outline(b, '#234a26'); return toCanvas(b); }
+function bookshelf() { const b = buf(16, 22); rect(b, 1, 1, 14, 21, C.wf3); rect(b, 2, 2, 12, 19, C.wf2); const cols = ['#e0504a', '#4f86cc', '#3f9e54', '#ffd24a', '#9a5fc4', '#2fa3a0', '#e8842a']; for (const sy of [2, 8, 14]) { for (let i = 0; i < 6; i++) rect(b, 3 + i * 2, sy, 1, 5, cols[(i + sy) % 7]); rect(b, 2, sy + 5, 12, 1, C.wf3); } outline(b, '#5a3d20'); return toCanvas(b); }
+function fireplace() { const b = buf(16, 20); rect(b, 1, 4, 14, 16, C.stone); rect(b, 1, 4, 14, 1, C.stoneL); for (let y = 5; y < 9; y += 2) for (let x = 2; x < 15; x += 3) set(b, x, y, C.stoneD); rect(b, 0, 2, 16, 2, C.wf2); rect(b, 0, 2, 16, 1, C.wf1); rect(b, 3, 9, 10, 9, '#241a22'); blob(b, 8, 15, 3, 3.4, '#ffe25a', '#ff8a2a', '#e0504a'); blob(b, 8, 13, 1.5, 2, '#fff3a0', '#ffd24a', '#ff8a2a'); rect(b, 4, 18, 8, 1, '#8a5a3a'); outline(b, '#5a4636'); return toCanvas(b); }
+function exhibit() { const b = buf(16, 20); rect(b, 3, 14, 10, 5, C.stone); rect(b, 3, 14, 10, 1, C.stoneL); rect(b, 2, 18, 12, 1, C.stoneD); blob(b, 8, 9, 4.4, 5, '#d8f4ff', '#bfe6f0', '#9fd0e0'); set(b, 6, 6, '#ffffff'); blob(b, 8, 10, 2, 1.4, '#ffb24a', '#f0902a', '#d0741a'); set(b, 10, 9, '#f0902a'); set(b, 6, 10, '#f0902a'); outline(b, '#7d7468'); return toCanvas(b); }
+function haybale() { const b = buf(16, 14); blob(b, 8, 8, 6, 5, C.f1, C.f2, C.f3); for (let x = 3; x < 13; x += 2) { set(b, x, 6, C.f3); set(b, x + 1, 9, C.f3); } rect(b, 4, 5, 8, 1, '#a8763a'); rect(b, 4, 11, 8, 1, '#a8763a'); outline(b, '#7a5a2a'); return toCanvas(b); }
+function feedsack() { const b = buf(16, 14); blob(b, 8, 9, 4.6, 4.5, '#e8dcc0', '#cfc0a0', '#a89878'); rect(b, 5, 3, 6, 3, '#cfc0a0'); set(b, 6, 3, '#a89878'); set(b, 9, 3, '#a89878'); set(b, 7, 9, '#8a6a3f'); set(b, 9, 10, '#8a6a3f'); set(b, 8, 8, '#8a6a3f'); outline(b, '#7a6648'); return toCanvas(b); }
+function nestbox() { const b = buf(16, 14); blob(b, 8, 10, 5, 3.6, C.f1, C.f2, C.f3); disc(b, 8, 10, 3.4, 2, C.f3); disc(b, 7, 9, 1.4, 1.2, C.eggL); disc(b, 10, 10, 1.4, 1.2, C.eggL); set(b, 7, 9, '#ffffff'); outline(b, '#7a5a2a'); return toCanvas(b); }
+function crate() { const b = buf(); rect(b, 2, 4, 12, 11, C.wf2); rect(b, 2, 4, 12, 1, C.wf1); rect(b, 2, 4, 1, 11, C.wf3); rect(b, 13, 4, 1, 11, C.wf3); rect(b, 2, 9, 12, 1, C.wf3); rect(b, 2, 14, 12, 1, C.wf3); set(b, 3, 5, C.wf3); set(b, 12, 5, C.wf3); set(b, 3, 13, C.wf3); set(b, 12, 13, C.wf3); outline(b, '#5a3d20'); return toCanvas(b); }
+function banner() { const b = buf(16, 18); rect(b, 3, 1, 10, 14, '#9a5fc4'); rect(b, 3, 1, 10, 2, '#caa0e0'); rect(b, 3, 1, 1, 14, '#71409e'); disc(b, 8, 7, 2.4, 2.4, '#ffd24a'); set(b, 10, 6, C.beakB); set(b, 7, 6, C.ink); set(b, 4, 15, '#9a5fc4'); set(b, 8, 16, '#9a5fc4'); set(b, 12, 15, '#9a5fc4'); outline(b, '#4a2a6a'); return toCanvas(b); }
 
 /* ---------------- unique building exteriors ---------------- */
 function museum() {
@@ -528,6 +579,8 @@ export function buildArt() {
       fountain: fountain(), lamp: lamp(), bench: bench(), signpost: signpost(), flowerpot: flowerpot(), bush: bush(), rock: rock(), stall: stall(),
       palm: palm(), snowtree: snowtree(), tree: forestTree(), cactus: cactus(), gem: gem(), coral: coral(), snowman: snowman(), shell: shell(), fish: fish(),
       counter: counter(), shelf: shelf(), table: table(), bed: bed(), painting: painting(), barrel: barrel(),
+      chair: chair(), teacup: teacup(), plant: plant(), bookshelf: bookshelf(), fireplace: fireplace(),
+      exhibit: exhibit(), haybale: haybale(), feedsack: feedsack(), nestbox: nestbox(), crate: crate(), banner: banner(),
       balloonR: balloon('#e0504a'), balloonB: balloon('#4f86cc'), balloonY: balloon('#ffd24a'), lantern2: lantern(),
     },
   };

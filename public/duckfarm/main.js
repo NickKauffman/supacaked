@@ -27,6 +27,7 @@ let areaCache, area, current;
 let crops, groundEggs, ducks;                 // farm-only entities
 let mounts, walking;                          // mounts (pelican/ostrich/penguin) + flock-follow toggle
 let coins, eggs, inv, level, xp, discovered, stats, questIndex, selectedCrop, lastStipendDay;
+let visitedAreas;                              // base areas the players have entered (for travel quests)
 let fishInv, fishSeen, fishDonated;            // fishing inventory + collection + museum
 let player, player2, clock, tod;
 const bothPlayers = () => [player, player2];
@@ -50,8 +51,8 @@ function freshState() {
   areaCache = {}; current = 'farm'; area = getArea('farm');
   crops = new Map(); groundEggs = []; ducks = []; mounts = []; walking = false;
   coins = 10; eggs = 0; inv = {}; level = 1; xp = 0; discovered = new Set();
-  stats = { planted: 0, harvested: 0, fed: 0, eggsCollected: 0, sold: 0, berryHarvest: 0, caught: 0, donated: 0 };
-  fishInv = {}; fishSeen = new Set(); fishDonated = new Set();
+  stats = { planted: 0, harvested: 0, fed: 0, eggsCollected: 0, sold: 0, berryHarvest: 0, caught: 0, donated: 0, rode: 0 };
+  fishInv = {}; fishSeen = new Set(); fishDonated = new Set(); visitedAreas = new Set(['farm']);
   questIndex = 0; selectedCrop = 'wheat'; lastStipendDay = -1; fishing = null;
   player = { name: 'Haley', sprite: 'player', x: 16 * TILE, y: 16 * TILE, dir: 'down', flip: false, speed: 1.4, moving: false, step: 0, mount: null, hist: [] };
   player2 = { name: 'Nick', sprite: 'player2', x: 18 * TILE, y: 16 * TILE, dir: 'down', flip: false, speed: 1.4, moving: false, step: 0, mount: null, hist: [] };
@@ -73,7 +74,7 @@ function save() {
     const cur = current.startsWith('int:') ? (area.warps[0]?.to || 'farm') : current;
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       current: cur, farmMap: areaCache.farm?.map, crops: [...crops.entries()], groundEggs,
-      coins, eggs, inv, level, xp, discovered: [...discovered], stats, questIndex, selectedCrop, lastStipendDay, clock, tod, walking,
+      coins, eggs, inv, level, xp, discovered: [...discovered], stats, questIndex, selectedCrop, lastStipendDay, clock, tod, walking, visitedAreas: [...visitedAreas],
       fishInv, fishSeen: [...fishSeen], fishDonated: [...fishDonated],
       player: { x: player.x, y: player.y, dir: player.dir, flip: player.flip },
       player2: { x: player2.x, y: player2.y, dir: player2.dir, flip: player2.flip },
@@ -91,7 +92,8 @@ function load() {
   level = s.level || 1; xp = s.xp || 0; discovered = new Set(s.discovered); stats = s.stats; questIndex = s.questIndex || 0;
   selectedCrop = s.selectedCrop || 'wheat'; lastStipendDay = s.lastStipendDay ?? -1; clock = s.clock || 0; tod = s.tod ?? 0.25;
   fishInv = s.fishInv || {}; fishSeen = new Set(s.fishSeen || []); fishDonated = new Set(s.fishDonated || []); fishing = null;
-  if (!stats.caught) stats.caught = 0; if (!stats.donated) stats.donated = 0;
+  if (!stats.caught) stats.caught = 0; if (!stats.donated) stats.donated = 0; if (!stats.rode) stats.rode = 0;
+  visitedAreas = new Set(s.visitedAreas && s.visitedAreas.length ? s.visitedAreas : ['farm']); visitedAreas.add(current);
   player = { name: 'Haley', sprite: 'player', ...s.player, speed: 1.4, moving: false, step: 0, mount: null, hist: [] };
   player2 = { name: 'Nick', sprite: 'player2', x: 18 * TILE, y: 16 * TILE, dir: 'down', flip: false, ...(s.player2 || {}), speed: 1.4, moving: false, step: 0, mount: null, hist: [] };
   walking = s.walking || false;
@@ -132,9 +134,14 @@ function addXP(n) {
   while (xp >= xpForLevel(level)) { xp -= xpForLevel(level); level++; sfx.level();
     const nu = CROP_ORDER.find((id) => CROPS[id].level === level); say(nu ? `⭐ Level ${level}! Unlocked ${CROPS[nu].name}` : `⭐ Level ${level}!`); }
 }
-function statVal(s) { return s === 'ducks' ? ducks.length : s === 'level' ? level : s === 'coins' ? coins : s === 'breeds' ? discovered.size : (stats[s] || 0); }
+function statVal(q) {
+  const s = q.stat;
+  if (s === 'visit') return visitedAreas.has(q.area) ? 1 : 0;
+  if (s === 'places') return visitedAreas.size;
+  return s === 'ducks' ? ducks.length : s === 'level' ? level : s === 'coins' ? coins : s === 'breeds' ? discovered.size : (stats[s] || 0);
+}
 function checkQuests() {
-  while (questIndex < QUESTS.length) { const q = QUESTS[questIndex]; if (statVal(q.stat) < q.goal) break;
+  while (questIndex < QUESTS.length) { const q = QUESTS[questIndex]; if (statVal(q) < q.goal) break;
     coins += q.reward.coins; if (q.reward.xp) addXP(q.reward.xp); say(`✅ ${q.text}! +${q.reward.coins}🪙`); sfx.coin(); questIndex++; }
 }
 
@@ -222,8 +229,8 @@ function toggleRide(p = player) {
     m.x = p.x; m.y = p.y; sfx.warp(); say(`${p.name} hopped off the ${MOUNT_NAME[m.kind].toLowerCase()}`); return; }
   let best = null, bd = 26 * 26;
   for (const m of mounts) { if (m.ridden || m.area !== current) continue; const d = (m.x - p.x) ** 2 + (m.y - p.y) ** 2; if (d < bd) { bd = d; best = m; } }
-  if (best) { p.mount = best; best.ridden = true; if (p === player) walking = false; sfx.warp();
-    say(best.kind === 'pelican' ? `🦅 ${p.name} takes flight!` : best.kind === 'penguin' ? `🐧 ${p.name} dives in!` : `🏃 ${p.name} rides the ostrich!`); }
+  if (best) { p.mount = best; best.ridden = true; if (p === player) walking = false; stats.rode = (stats.rode || 0) + 1; sfx.warp();
+    say(best.kind === 'pelican' ? `🦅 ${p.name} takes flight!` : best.kind === 'penguin' ? `🐧 ${p.name} dives in!` : `🏃 ${p.name} rides the ostrich!`); checkQuests(); }
   else say(`no mount near ${p.name}`);
 }
 function toggleWalk() {
@@ -284,6 +291,7 @@ function warpTo(name, tx, ty) {
   const t = areaTitle(name);
   say(area.biome === 'interior' ? `🚪 ${t}` : area.biome === 'underwater' ? `🌊 ${t}` : area.biome === 'cave' ? `🕯️ ${t}` : `📍 ${t}`);
   if (name === 'quack' && festivalDay()) say('🎉 The Quacksborough Festival is on today!');
+  if (!name.startsWith('int:')) { visitedAreas.add(name); checkQuests(); }   // travel quests tick on arrival
 }
 function enterInterior(gid) { if (player.mount) toggleRide(player); if (player2.mount) toggleRide(player2); warpTo('int:' + gid); }
 // where bought mounts should appear: just outside, if we're in a shop interior
@@ -390,7 +398,7 @@ const BUILDING_ACTIONS = {
     openModal(`🦆 ${src?.shopTitle || 'Duck Emporium'}`, `You have <b>${coins}</b> 🪙 — ducks & exotic mounts:`, [...breedBtns, ...mountBtns]);
   },
   hall: (src) => { const q = QUESTS[questIndex]; const canClaim = day() > lastStipendDay;
-    openModal(`🏛️ ${src?.shopTitle || 'Town Hall'}`, `Reputation: <b>${questIndex}</b> tasks done<br>${q ? `Current task: <i>${q.text}</i> (${Math.min(statVal(q.stat), q.goal)}/${q.goal})` : '<i>All tasks complete — magnificent!</i>'}`, [
+    openModal(`🏛️ ${src?.shopTitle || 'Town Hall'}`, `Reputation: <b>${questIndex}</b> tasks done<br>${q ? `Current task: <i>${q.text}</i> (${Math.min(statVal(q), q.goal)}/${q.goal})` : '<i>All tasks complete — magnificent!</i>'}`, [
       { label: canClaim ? 'Claim daily stipend  →  +15 🪙' : 'Daily stipend (come back tomorrow)', disabled: !canClaim, onClick: () => { coins += 15; lastStipendDay = day(); sfx.coin(); say('🪙 +15 stipend'); BUILDING_ACTIONS.hall(src); } },
     ]); },
   cafe: (src) => { const hungry = ducks.some((d) => d.full < 100);
@@ -522,11 +530,12 @@ function blit(img, x, y, flip = false) { const sx = Math.round(x - camX), sy = M
 function drawCharacter(p) {
   const set = art[p.sprite] || art.player;
   const f = p.moving ? set[p.dir][Math.floor(p.step) % 4] : set[p.dir][1];
+  const dy = f.height - 16;   // taller sprites are anchored at the feet
   if (p.mount) { const k = p.mount.kind, lift = k === 'pelican' ? 4 : 0;
-    shadow(p.x, p.y, k === 'ostrich' ? 6 : 5); blit(art[k][Math.floor(p.step) % 2], p.x, p.y - (MOUNT_H[k] - 16) - lift, p.flip); blit(f, p.x, p.y - RIDE_LIFT[k] - lift, p.flip);
-  } else { shadow(p.x, p.y); blit(f, p.x, p.y, p.flip); }
+    shadow(p.x, p.y, k === 'ostrich' ? 6 : 5); blit(art[k][Math.floor(p.step) % 2], p.x, p.y - (MOUNT_H[k] - 16) - lift, p.flip); blit(f, p.x, p.y - RIDE_LIFT[k] - lift - dy, p.flip);
+  } else { shadow(p.x, p.y); blit(f, p.x, p.y - dy, p.flip); }
   ctx.font = '6px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = p === player ? '#ffc7e0' : '#bcd8ff';
-  ctx.fillText(p.name, Math.round(p.x - camX + 8), Math.round(p.y - camY - (p.mount ? 16 : 5))); ctx.textAlign = 'left';
+  ctx.fillText(p.name, Math.round(p.x - camX + 8), Math.round(p.y - camY - (p.mount ? 16 : 9))); ctx.textAlign = 'left';
 }
 function ambient() { const t = tod; if (t < 0.05) return lerp(t / 0.05, [20, 22, 60, 0.42], [255, 180, 120, 0.16]); if (t < 0.45) return null; if (t < 0.62) return lerp((t - 0.45) / 0.17, [255, 160, 110, 0.16], [40, 30, 70, 0.3]); if (t < 0.92) return { r: 16, g: 20, b: 58, a: 0.44 }; return lerp((t - 0.92) / 0.08, [16, 20, 58, 0.44], [20, 22, 60, 0.42]); }
 function lerp(p, a, b) { const L = (i) => a[i] + (b[i] - a[i]) * p; return { r: L(0) | 0, g: L(1) | 0, b: L(2) | 0, a: L(3) }; }
@@ -560,7 +569,7 @@ function draw() {
   const ents = [];
   for (const p of area.props) ents.push({ sy: (p.ty + p.h) * TILE, draw: () => { const img = art.props[p.art]; if (!img) return; if (p.solid) shadow(p.tx * TILE + (p.w - 1) * 8, (p.ty + p.h - 1) * TILE, 4 + p.w * 2); ctx.drawImage(img, Math.round(p.tx * TILE - camX), Math.round((p.ty + p.h) * TILE - img.height - camY)); } });
   for (const b of area.buildings) ents.push({ sy: (b.ty + b.h) * TILE - 2, draw: () => { const img = resolveBuilding(b.art); if (!img) return; shadow(b.tx * TILE + (b.w - 1) * 8, (b.ty + b.h - 1) * TILE, 6 + b.w * 3); ctx.drawImage(img, Math.round(b.tx * TILE - camX), Math.round((b.ty + b.h) * TILE - img.height - camY)); } });
-  for (const n of area.npcs) ents.push({ sy: n.y + 14, draw: () => { shadow(n.x, n.y); blit(n.frames[n.dir][n.frame % n.frames[n.dir].length] || n.frames[n.dir][1], n.x, n.y, n.flip); } });
+  for (const n of area.npcs) ents.push({ sy: n.y + 14, draw: () => { shadow(n.x, n.y); const nf = n.frames[n.dir][n.frame % n.frames[n.dir].length] || n.frames[n.dir][1]; blit(nf, n.x, n.y - (nf.height - 16), n.flip); } });
   for (const m of mounts) if (m.area === current && !m.ridden) ents.push({ sy: m.y + 14, draw: () => { shadow(m.x, m.y, m.kind === 'ostrich' ? 6 : 5); blit(art[m.kind][m.frame], m.x, m.y - (MOUNT_H[m.kind] - 16), m.flip); } });
   if (current === 'farm') { for (const g of groundEggs) ents.push({ sy: g.y + 14, draw: () => { shadow(g.x, g.y, 4); blit(art.egg, g.x, g.y); } });
     for (const d of ducks) ents.push({ sy: d.y + 14, draw: () => { shadow(d.x, d.y); blit(art.ducks[d.breed][d.frame], d.x, d.y, d.flip); if (d.full < 25) { ctx.fillStyle = '#ffd95a'; ctx.fillRect(Math.round(d.x - camX + 11), Math.round(d.y - camY - 3), 3, 3); } } }); }
@@ -613,7 +622,7 @@ function drawTopHUD() {
   ctx.font = '8px monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = '#fff';
   ctx.fillText(`🪙${coins}  🥚${eggs}  🐟${fishCount()}  🦆${ducks.length}  ${todIcon()} ${SEASON_ICON[seasonFor(clock)]}${weather === 'rain' ? '🌧️' : weather === 'snow' ? '🌨️' : ''}`, 3, 6);
   const q = QUESTS[questIndex];
-  if (q) { const tx = `★ ${q.text}  ${Math.min(statVal(q.stat), q.goal)}/${q.goal}`; const w = ctx.measureText(tx).width + 8;
+  if (q) { const tx = `★ ${q.text}  ${Math.min(statVal(q), q.goal)}/${q.goal}`; const w = ctx.measureText(tx).width + 8;
     ctx.fillStyle = 'rgba(18,26,38,0.82)'; ctx.fillRect(0, UH - 11, w, 11); ctx.fillStyle = '#cfe6d0'; ctx.fillText(tx, 3, UH - 5); }
 }
 
@@ -719,7 +728,7 @@ function updatePanel() {
   $('xpfill').style.width = Math.round(100 * xp / xpForLevel(level)) + '%';
   $('seed').textContent = CROPS[selectedCrop].name + (CROPS[selectedCrop].cost ? ` (${CROPS[selectedCrop].cost}🪙)` : ' (free)');
   const q = QUESTS[questIndex];
-  if (q) { $('quest').textContent = q.text; $('questprog').textContent = `${Math.min(statVal(q.stat), q.goal)} / ${q.goal}`; $('questfill').style.width = Math.round(100 * Math.min(1, statVal(q.stat) / q.goal)) + '%'; }
+  if (q) { $('quest').textContent = q.text; $('questprog').textContent = `${Math.min(statVal(q), q.goal)} / ${q.goal}`; $('questfill').style.width = Math.round(100 * Math.min(1, statVal(q) / q.goal)) + '%'; }
   else { $('quest').textContent = '🎉 All quests done!'; $('questprog').textContent = ''; $('questfill').style.width = '100%'; }
   $('mode').textContent = player.mount ? `🐎 riding the ${MOUNT_NAME[player.mount.kind].toLowerCase()} — R to hop off`
     : walking ? '🦆 walking the flock — F to stop'
@@ -834,7 +843,7 @@ setupTouch();
 
 // debug
 window.__DF = {
-  get s() { return { state, current, coins, eggs, inv, level, xp, ducks, mounts, walking, crops, groundEggs, discovered, stats, questIndex, selectedCrop, player, player2, clock, tod, area, fishInv, fishSeen, fishDonated, fishing }; },
+  get s() { return { state, current, coins, eggs, inv, level, xp, ducks, mounts, walking, crops, groundEggs, discovered, stats, questIndex, selectedCrop, player, player2, clock, tod, area, fishInv, fishSeen, fishDonated, fishing, visitedAreas }; },
   startGame, freshState, interact, openModal, closeModal, openDialogue, warpTo, cycleSeed, addXP, checkQuests, BUILDING_ACTIONS,
   spawnMount, spawnDuck, toggleRide, toggleWalk, startFishing, hookFish, touchDir,
   ctrl: ctrlInput, primaryAction, hasSave, dfMenu, enableAudio, snapshot: controllerSnapshot, get state() { return state; },

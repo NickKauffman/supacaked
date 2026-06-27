@@ -105,18 +105,63 @@ export function buildArea(id) {
 /* ---------------- generic interior ---------------- */
 export function buildInterior(gid) {
   const d = BUILDING_INDEX[gid] || { name: 'Room', type: 'house', action: 'house', npc: { name: '?', pal: P.grey, lines: ['...'] }, returnArea: 'farm', returnTile: [16, 18] };
-  const w = 11, h = 8, midx = Math.floor(w / 2);
-  const map = []; for (let y = 0; y < h; y++) { const r = []; for (let x = 0; x < w; x++) r.push('woodfloor'); map.push(r); }
+  const w = 13, h = 9, midx = 6;
+  // refine the generic 'house' type into purpose-specific rooms by name
+  const nm = (d.name || '').toLowerCase();
+  let kind = d.type;
+  if (kind === 'house') kind = nm.includes('dojo') ? 'dojo' : nm.includes('tackle') ? 'tackle'
+    : (nm.includes('inn') || nm.includes('igloo')) ? 'inn' : 'home';
+  const floor = kind === 'barn' ? 'dirt' : (kind === 'hall' || kind === 'museum') ? 'cobble' : 'woodfloor';
+
+  const map = []; for (let y = 0; y < h; y++) { const r = []; for (let x = 0; x < w; x++) r.push(floor); map.push(r); }
   for (let x = 0; x < w; x++) { map[0][x] = 'intwall'; map[h - 1][x] = 'intwall'; }
   for (let y = 0; y < h; y++) { map[y][0] = 'intwall'; map[y][w - 1] = 'intwall'; }
-  map[Math.floor(h / 2)][midx] = 'rug';
-  map[h - 2][midx] = 'mat';
-  const theme = SHOP_TYPES.has(d.type) ? 'shop' : (['house', 'inn', 'igloo'].includes(d.type) ? 'home' : 'civic');
+  if (kind === 'hall' || kind === 'museum') for (let y = 3; y <= 6; y++) map[y][midx] = 'rug';   // grand runner
+  map[h - 2][midx] = 'mat';                                                                       // doormat at entrance
+
+  // furnish: keep the central column (x=6) clear of SOLID props so the keeper stays reachable.
   const props = [];
-  const npcs = [{ name: d.npc.name, tx: midx, ty: 3, dir: 'down', pal: d.npc.pal, lines: d.npc.lines, action: d.action !== 'house' ? d.action : null, shopTitle: d.name }];
-  if (theme === 'shop') { props.push({ art: 'counter', tx: midx - 1, ty: 2, w: 2, h: 1, solid: true }, { art: 'shelf', tx: 1, ty: 1, w: 1, h: 1, solid: true }, { art: 'shelf', tx: w - 2, ty: 1, w: 1, h: 1, solid: true }, { art: 'barrel', tx: 2, ty: h - 3, w: 1, h: 1, solid: true }); }
-  else if (theme === 'home') { props.push({ art: 'bed', tx: 1, ty: 1, w: 1, h: 1, solid: true }, { art: 'table', tx: w - 3, ty: 4, w: 1, h: 1, solid: true }, { art: 'painting', tx: midx, ty: 1, w: 1, h: 1, solid: false }, { art: 'flowerpot', tx: w - 2, ty: h - 3, w: 1, h: 1, solid: true }); }
-  else { props.push({ art: 'table', tx: 2, ty: 4, w: 1, h: 1, solid: true }, { art: 'painting', tx: 2, ty: 1, w: 1, h: 1, solid: false }, { art: 'painting', tx: w - 3, ty: 1, w: 1, h: 1, solid: false }); }
+  const add = (art, tx, ty, solid = true, ww = 1, hh = 1) => props.push({ art, tx, ty, w: ww, h: hh, solid });
+  const ns = (art, tx, ty) => add(art, tx, ty, false);                  // wall hanging (non-blocking)
+  const tall = (art, tx, ty) => add(art, tx, ty, true, 1, 2);           // bed / bookshelf / fireplace
+  const desk = () => { add('counter', 4, 2, true, 2); add('counter', 7, 2, true, 2); };  // keeper's service counter
+  switch (kind) {
+    case 'store':
+      desk(); add('shelf', 1, 1); add('shelf', 2, 1); add('shelf', 10, 1); add('shelf', 11, 1);
+      add('crate', 1, 6); add('barrel', 2, 6); add('crate', 10, 6); add('plant', 11, 6); break;
+    case 'cafe':
+      desk(); ns('teacup', 4, 1); ns('teacup', 8, 1); ns('painting', 6, 1);
+      add('table', 2, 5); add('chair', 2, 6); add('table', 10, 5); add('chair', 10, 6);
+      add('plant', 1, 6); add('plant', 11, 6); break;
+    case 'hall':
+      desk(); ns('banner', 2, 1); ns('banner', 10, 1); tall('bookshelf', 1, 1); tall('bookshelf', 11, 1);
+      ns('painting', 3, 1); ns('painting', 9, 1); add('plant', 1, 6); add('plant', 11, 6); break;
+    case 'museum':
+      add('exhibit', 2, 4); add('exhibit', 4, 4); add('exhibit', 8, 4); add('exhibit', 10, 4);
+      ns('painting', 2, 1); ns('painting', 4, 1); ns('painting', 8, 1); ns('painting', 10, 1);
+      add('plant', 1, 6); add('plant', 11, 6); break;
+    case 'emporium':
+      desk(); add('nestbox', 1, 1); add('nestbox', 2, 1); add('nestbox', 10, 1); add('nestbox', 11, 1);
+      add('feedsack', 1, 6); add('crate', 2, 6); add('crate', 10, 6); add('feedsack', 11, 6); break;
+    case 'barn':
+      desk(); add('haybale', 1, 1); add('haybale', 2, 1); add('feedsack', 10, 1); add('haybale', 11, 1);
+      add('nestbox', 1, 6); add('nestbox', 2, 6); add('haybale', 10, 6); add('haybale', 11, 6); break;
+    case 'tackle':
+      desk(); add('shelf', 1, 1); add('shelf', 2, 1); add('shelf', 10, 1); add('shelf', 11, 1);
+      add('barrel', 1, 6); add('crate', 2, 6); ns('painting', 6, 1); add('plant', 11, 6); break;
+    case 'dojo':
+      tall('bookshelf', 1, 1); tall('bookshelf', 11, 1); ns('banner', 3, 1); ns('banner', 9, 1);
+      add('table', 2, 5); add('crate', 10, 5); add('plant', 1, 6); add('plant', 11, 6); break;
+    case 'inn':
+      tall('bed', 1, 1); tall('bed', 1, 4); tall('fireplace', 11, 1); add('table', 9, 5); add('chair', 9, 6);
+      add('plant', 11, 6); ns('painting', 4, 1); break;
+    default: // home
+      tall('bed', 1, 1); tall('fireplace', 11, 1); tall('bookshelf', 1, 4);
+      add('table', 9, 5); add('chair', 9, 6); add('chair', 8, 5); add('flowerpot', 2, 6);
+      add('plant', 11, 6); ns('painting', 4, 1);
+  }
+
+  const npcs = [{ name: d.npc.name, tx: midx, ty: 2, dir: 'down', pal: d.npc.pal, lines: d.npc.lines, action: d.action !== 'house' ? d.action : null, shopTitle: d.name }];
   const warps = [{ x: midx, y: h - 2, to: d.returnArea, tx: d.returnTile[0], ty: d.returnTile[1] }];
   return { name: gid + '(in)', w, h, map, biome: 'interior', interiorName: d.name, buildings: [], npcs, props, warps, entrance: [midx, h - 3] };
 }
