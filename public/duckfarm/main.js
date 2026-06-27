@@ -277,7 +277,7 @@ function checkWarp() {
     p.onWarp = true; warpTo(wrp.to, wrp.tx, wrp.ty); return;
   }
 }
-function placeP(p, tx, ty) { p.x = tx * TILE; p.y = ty * TILE; p.moving = false; p.hist = []; if (p.mount) { p.mount.area = current; p.mount.x = p.x; p.mount.y = p.y; } }
+function placeP(p, tx, ty) { p.x = tx * TILE; p.y = ty * TILE; if (solidAt(p.x + 8, p.y + 8)) { const wlk = nearestWalkable(p.x, p.y); p.x = wlk.x; p.y = wlk.y; } p.moving = false; p.hist = []; if (p.mount) { p.mount.area = current; p.mount.x = p.x; p.mount.y = p.y; } }
 function warpTo(name, tx, ty) {
   current = name; area = getArea(name);
   const ent = area.entrance || [Math.floor(area.w / 2), Math.floor(area.h / 2)];
@@ -650,7 +650,7 @@ function drawFishing() {
 function drawMap() {
   ctx.fillStyle = 'rgba(10,16,26,0.95)'; ctx.fillRect(0, 0, UW, UH);
   ctx.textAlign = 'center'; ctx.fillStyle = '#fffdf0'; ctx.font = 'bold 11px monospace'; ctx.textBaseline = 'middle'; ctx.fillText('WORLD MAP', UW / 2, 12);
-  const pad = 22, cw = (UW - 2 * pad) / 2, ch = (UH - 46) / 5;
+  const pad = 44, cw = (UW - 2 * pad) / 2, ch = (UH - 48) / 5;   // wider margin so edge labels fit
   const pos = (id) => { const [c, r] = MAP_LAYOUT[id]; return [pad + (c - 2) * cw, 28 + r * ch]; };
   ctx.strokeStyle = 'rgba(150,170,190,0.5)'; ctx.lineWidth = 1;
   for (const id in MAP_LAYOUT) { const def = AREA_DEFS[id]; if (!def) continue; const a = pos(id);
