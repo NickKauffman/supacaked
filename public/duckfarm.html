@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Duck Farm — SupaCaked</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; height: 100%; background: radial-gradient(circle at 50% 20%, #243646, #11161e 70%);
+        font-family: ui-monospace, Menlo, monospace; color: #e6e6ea; overflow: hidden; }
+      .stage { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+      h1 { font-size: 18px; margin: 4px 0 0; letter-spacing: 1px; }
+      canvas#game { image-rendering: pixelated; width: min(96vw, 1100px); height: auto; aspect-ratio: 4 / 3;
+        border-radius: 12px; box-shadow: 0 14px 50px rgba(0,0,0,.6), 0 0 0 3px #3a4b5a; background: #8ed159; }
+      /* phones are the controllers on SupaCaked — never show the on-screen pads on the TV */
+      #touch { display: none !important; }
+      .panel, .hint { display: none !important; }
+
+      /* generic modal (shops) */
+      #modal { display: none; position: fixed; inset: 0; background: rgba(8,12,18,.62); align-items: center; justify-content: center; z-index: 10; }
+      .modalbox { width: 380px; background: #1b2530; border: 1px solid #3a4b5a; border-radius: 14px; padding: 18px; }
+      .modalbox h2 { margin: 0 0 4px; font-size: 18px; }
+      .modalbox .sub { font-size: 14px; color: #b9cdd6; margin-bottom: 12px; } .modalbox .sub b { color: #ffd95a; } .modalbox .sub i { color: #9fd6a0; }
+      #modalBtns button { display: block; width: 100%; text-align: left; margin: 7px 0; padding: 12px 14px; font: inherit; font-size: 14px;
+        background: #25323e; color: #e6e6ea; border: 1px solid #3a4b5a; border-radius: 9px; }
+      #modalBtns button:disabled { opacity: .4; }
+      #modalClose { display: block; width: 100%; text-align: center; margin-top: 10px; padding: 10px; font: inherit;
+        background: #3a2f44; color: #e6e6ea; border: 1px solid #4a3d54; border-radius: 9px; }
+      /* dialogue */
+      #dialogue { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 9; padding: 18px; justify-content: center; }
+      .dlgbox { width: min(820px, 92vw); background: #161e28; border: 2px solid #4a6276; border-radius: 14px; padding: 16px 20px; }
+      .dlgbox .name { color: #ffe9b0; font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+      .dlgbox .text { font-size: 16px; line-height: 1.5; min-height: 40px; } .dlgbox .hint { text-align: right; font-size: 12px; color: #8fa6b5; }
+
+      /* lobby overlay */
+      #lobby { position: fixed; inset: 0; z-index: 30; background: radial-gradient(circle at 50% 30%, #27506a, #141b24 75%);
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; }
+      #lobby.hide { display: none; }
+      #lobby .title { font-size: 40px; font-weight: 800; letter-spacing: 2px; }
+      #lobby .sub { color: #bfe0c8; font-size: 15px; }
+      #lobby .code { font-size: 64px; font-weight: 800; letter-spacing: 10px; color: #ffe25a; }
+      #lobby .join { color: #9fbecb; font-size: 14px; }
+      #qr { background: #fff; padding: 10px; border-radius: 10px; }
+      #rlist { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 600px; }
+      .pill { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,.08); border-radius: 999px; padding: 6px 12px; font-size: 14px; }
+      .pill i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+      .pill.off { opacity: .4; } .pill .tagr { color: #ffe9b0; font-size: 12px; margin-left: 4px; }
+      #startcue { color: #dfffd0; font-size: 15px; }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <h1>🦆 DUCK FARM</h1>
+      <canvas id="game" width="256" height="192"></canvas>
+    </div>
+
+    <div id="modal"><div class="modalbox"><h2 id="modalTitle">Shop</h2><div class="sub" id="modalSub"></div><div id="modalBtns"></div><button id="modalClose">Close</button></div></div>
+    <div id="dialogue"><div class="dlgbox"><div class="name" id="dlgName">Name</div><div class="text" id="dlgText">...</div><div class="hint" id="dlgHint">▸</div></div></div>
+
+    <div id="lobby">
+      <div class="title">🦆 DUCK FARM</div>
+      <div class="sub">A 2-player cozy world for Haley &amp; Nick · play on the TV, control with your phones</div>
+      <div>Room code</div>
+      <div class="code" id="roomCode">····</div>
+      <div id="qr"></div>
+      <div class="join">join at <span id="joinUrl">…</span></div>
+      <div id="rlist"></div>
+      <div id="startcue">Open the join link on your phone to start…</div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@gh-pages/qrcode.min.js"></script>
+    <script type="module" src="/duckfarm/main.js"></script>
+    <script>
+    (function () {
+      const socket = io();
+      const params = new URLSearchParams(location.search);
+      const ROOM = (params.get('room') || '').toUpperCase();
+      const $ = (id) => document.getElementById(id);
+      const roster = new Map();
+      let idToIdx = {}, started = false, ready = false;
+
+      const whenReady = (cb) => { if (window.__DF) cb(); else setTimeout(() => whenReady(cb), 40); };
+      whenReady(() => { ready = true; recompute(); });
+
+      socket.on('connect', () => socket.emit('host:hello', { code: ROOM || null }));
+      socket.on('host:room', ({ code, joinUrl }) => {
+        $('roomCode').textContent = code;
+        const full = joinUrl + '?room=' + code;
+        $('joinUrl').textContent = full.replace(/^https?:\/\//, '');
+        $('qr').innerHTML = ''; try { new QRCode($('qr'), { text: full, width: 150, height: 150, correctLevel: QRCode.CorrectLevel.M }); } catch (e) { $('qr').textContent = 'QR'; }
+        broadcast();
+      });
+      socket.on('host:roster', (arr) => { roster.clear(); arr.forEach((p) => roster.set(p.id, { ...p })); recompute(); });
+      socket.on('host:playerJoined', (p) => { roster.set(p.id, { ...p, connected: true }); recompute(); });
+      socket.on('host:playerLeft', ({ id }) => { const r = roster.get(id); if (r) r.connected = false; recompute(); });
+      socket.on('host:input', ({ id, type, payload }) => {
+        if (type === 'start') { startGame(); return; }
+        if (!ready || !started) return;
+        const idx = idToIdx[id]; if (idx === undefined) return;
+        if (type === 'dfMove') window.__DF.ctrl(idx, 'move', payload || {});
+        else if (type === 'dfAct') window.__DF.ctrl(idx, 'act');
+        else if (type === 'dfRide') window.__DF.ctrl(idx, 'ride');
+        else if (type === 'dfMeta') window.__DF.ctrl(idx, 'meta', payload);
+      });
+
+      function startGame() { if (!ready || started) return; started = true; window.__DF.startGame(window.__DF.hasSave()); $('lobby').classList.add('hide'); broadcast(); }
+      function recompute() {
+        const conn = [...roster.values()].filter((p) => p.connected).sort((a, b) => a.id - b.id);
+        idToIdx = {}; conn.forEach((p, i) => { if (i < 2) idToIdx[p.id] = i; });
+        renderLobby(conn);
+        if (ready && !started && conn.length >= 1) startGame();   // first phone starts the world
+        broadcast();
+      }
+      function renderLobby(conn) {
+        const list = $('rlist');
+        if (!roster.size) { list.innerHTML = '<div class="pill off">No one\'s joined yet…</div>'; }
+        else { list.innerHTML = ''; [...roster.values()].forEach((p) => { const idx = idToIdx[p.id];
+          const role = idx === 0 ? 'controls Haley' : idx === 1 ? 'controls Nick' : 'watching';
+          const el = document.createElement('div'); el.className = 'pill' + (p.connected ? '' : ' off');
+          el.innerHTML = `<i style="background:${p.color}"></i>${p.name}<span class="tagr">${role}</span>`; list.appendChild(el); }); }
+        $('startcue').textContent = conn.length >= 2 ? 'Both players in — explore together! 🦆' : conn.length === 1 ? 'Haley\'s ready — get a 2nd phone for Nick!' : 'Open the join link on your phone to start…';
+      }
+      let lastB = 0;
+      function broadcast() { const now = Date.now(); if (now - lastB < 120) return; lastB = now; socket.emit('host:state', { game: 'duckfarm', started }); }
+      setInterval(broadcast, 1000);
+    })();
+    </script>
+  </body>
+</html>

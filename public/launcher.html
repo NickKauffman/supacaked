@@ -126,6 +126,13 @@
     <p>Grow a living pond world together. Plant lily pads and the frogs hop in; raise a bridge or a beaver dam side by side. It saves itself and grows a little every time you visit.</p>
     <span class="play">PLAY ▸</span>
   </a>
+  <a class="card duckfarm" data-game="duckfarm" href="/duckfarm">
+    <div class="glow"></div><div class="art">🦆</div>
+    <div class="badge">2 players · cozy co-op world</div>
+    <h2>Duck Farm</h2>
+    <p>Haley &amp; Nick farm, fish, and raise ducks across a whole world of towns, caves and underwater cities — ride pelicans to fly, ostriches to run, penguins to dive. It saves itself between visits.</p>
+    <span class="play">PLAY ▸</span>
+  </a>
   <div class="card soon">
     <div class="glow"></div><div class="art">🕹️</div>
     <div class="badge">coming soon</div>
@@ -148,7 +155,7 @@
   const socket = io();
 
   function leaderId(){ const c=[...roster.values()].filter(p=>p.connected).sort((a,b)=>a.id-b.id); return c[0]?c[0].id:null; }
-  function gameUrl(game){ const c='?room='+roomCode; return game==='cannons'?'/couch'+c : game==='frogger'?'/frogger'+c : game==='poltergeist'?'/poltergeist'+c : game==='beacon'?'/beacon'+c : game==='tandem'?'/tandem'+c : game==='glade'?'/glade'+c : '/'+c; }
+  function gameUrl(game){ const c='?room='+roomCode; return game==='cannons'?'/couch'+c : game==='frogger'?'/frogger'+c : game==='poltergeist'?'/poltergeist'+c : game==='beacon'?'/beacon'+c : game==='tandem'?'/tandem'+c : game==='glade'?'/glade'+c : game==='duckfarm'?'/duckfarm'+c : '/'+c; }
 
   socket.on('connect', ()=> socket.emit('host:hello', { code: roomCode || null }));
   socket.on('host:room', ({ code, joinUrl })=>{
@@ -169,7 +176,7 @@
   highlightCard(0);
   socket.on('host:input', ({id,type,payload})=>{ if(id!==leaderId()) return;
     if(type==='menu'){ highlightCard(payload&&payload.index); return; }
-    if(type==='selectGame'){ const g=payload&&payload.game; if(g==='cannons'||g==='frogger'||g==='poltergeist'||g==='beacon'||g==='tandem'||g==='glade') location.href=gameUrl(g); } });
+    if(type==='selectGame'){ const g=payload&&payload.game; if(g==='cannons'||g==='frogger'||g==='poltergeist'||g==='beacon'||g==='tandem'||g==='glade'||g==='duckfarm') location.href=gameUrl(g); } });
 
   function renderRoster(){
     const el=$('plist'), ps=[...roster.values()], lead=leaderId();

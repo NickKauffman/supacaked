@@ -361,6 +361,7 @@
     <div class="gtile beacon" data-game="beacon" data-idx="3"><span class="gart">🔦</span><span class="gname">Beacon</span></div>
     <div class="gtile tandem" data-game="tandem" data-idx="4"><span class="gart">🦿</span><span class="gname">Tandem</span></div>
     <div class="gtile glade" data-game="glade" data-idx="5"><span class="gart">🐸</span><span class="gname">The Glade</span></div>
+    <div class="gtile duckfarm" data-game="duckfarm" data-idx="6"><span class="gart">🦆</span><span class="gname">Duck Farm</span></div>
   </div>
   <div class="menubar">
     <button class="navbtn" id="menuLeft">◀</button>
@@ -534,6 +535,28 @@
   </div>
 </section>
 
+<section id="dfgame" class="screen">
+  <div class="grole">
+    <span class="gav" id="dfAv">👧</span>
+    <span class="gtxt">DUCK FARM<small id="dfRoleSub">Roam, farm, fish &amp; ride together.</small></span>
+  </div>
+  <div id="dfMeta" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:10px 0;">
+    <button data-m="seed" style="flex:1 0 28%;padding:11px;border-radius:10px;background:#25323e;color:#fff;border:1px solid #3a4b5a;font:inherit;font-size:13px">🌱 Seed</button>
+    <button data-m="build" style="flex:1 0 28%;padding:11px;border-radius:10px;background:#25323e;color:#fff;border:1px solid #3a4b5a;font:inherit;font-size:13px">🔨 Build</button>
+    <button data-m="tile" style="flex:1 0 28%;padding:11px;border-radius:10px;background:#25323e;color:#fff;border:1px solid #3a4b5a;font:inherit;font-size:13px">▦ Tile</button>
+    <button data-m="flock" style="flex:1 0 28%;padding:11px;border-radius:10px;background:#25323e;color:#fff;border:1px solid #3a4b5a;font:inherit;font-size:13px">🦆 Flock</button>
+    <button data-m="map" style="flex:1 0 28%;padding:11px;border-radius:10px;background:#25323e;color:#fff;border:1px solid #3a4b5a;font:inherit;font-size:13px">🗺️ Map</button>
+    <button data-m="music" style="flex:1 0 28%;padding:11px;border-radius:10px;background:#25323e;color:#fff;border:1px solid #3a4b5a;font:inherit;font-size:13px">🔊 Music</button>
+  </div>
+  <div class="gctrls">
+    <div class="gstick" id="dfStick"><div class="gnub" id="dfNub"></div><div class="gh">drag to walk</div></div>
+    <div class="gbtns">
+      <button class="gbtn place" id="dfAct">A</button>
+      <button class="gbtn tend" id="dfRide">🐎</button>
+    </div>
+  </div>
+</section>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 (function () {
@@ -610,7 +633,7 @@
   socket.on('connect', () => { if (me && roomCode) socket.emit('ctrl:join', { name: me.name, token, code: roomCode }); });
 
   // ---------- MENU (arrows + ENTER; only the leader can drive) ----------
-  const GAMES = ['cannons', 'frogger', 'poltergeist', 'beacon', 'tandem', 'glade'];
+  const GAMES = ['cannons', 'frogger', 'poltergeist', 'beacon', 'tandem', 'glade', 'duckfarm'];
   let menuIdx = 0, menuLeader = false;
   function renderMenuSel() { document.querySelectorAll('#menu .gtile').forEach((t, i) => t.classList.toggle('sel', i === menuIdx)); }
   function moveMenu(dir) { if (!menuLeader) return; menuIdx = (menuIdx + dir + GAMES.length) % GAMES.length; renderMenuSel(); socket.emit('ctrl:menu', { index: menuIdx }); }
@@ -1152,6 +1175,27 @@
     gRenderItems();
   }
 
+  // ---------- Duck Farm controller ----------
+  (function dfSetupStick(){
+    const pad=$('dfStick'), nub=$('dfNub'); let active=false,cx=0,cy=0,R=1,last=0,prev='';
+    function center(){ const r=pad.getBoundingClientRect(); cx=r.left+r.width/2; cy=r.top+r.height/2; R=Math.min(r.width,r.height)*0.32; }
+    function send(dx,dy,force){ const u=dy<-0.35?1:0,d=dy>0.35?1:0,l=dx<-0.35?1:0,r=dx>0.35?1:0; const key=''+u+d+l+r; const now=Date.now();
+      if(!force && (key===prev || now-last<50)) return; last=now; prev=key; socket.emit('ctrl:dfMove',{u,d,l,r}); }
+    const move=e=>{ if(!active) return; let dx=(e.clientX-cx)/R, dy=(e.clientY-cy)/R; const m=Math.hypot(dx,dy); if(m>1){dx/=m;dy/=m;} nub.style.transform='translate('+dx*R+'px,'+dy*R+'px)'; send(dx,dy,false); };
+    const down=e=>{ e.preventDefault(); center(); active=true; pad.classList.add('live'); try{ pad.setPointerCapture(e.pointerId); }catch(_){ } move(e); };
+    const up=()=>{ if(!active) return; active=false; pad.classList.remove('live'); nub.style.transform='translate(0,0)'; prev=''; socket.emit('ctrl:dfMove',{u:0,d:0,l:0,r:0}); };
+    pad.addEventListener('pointerdown',down); pad.addEventListener('pointermove',move); pad.addEventListener('pointerup',up); pad.addEventListener('pointercancel',up);
+  })();
+  $('dfAct').addEventListener('click', ()=> socket.emit('ctrl:dfAct',{}));
+  $('dfRide').addEventListener('click', ()=> socket.emit('ctrl:dfRide',{}));
+  document.querySelectorAll('#dfMeta button').forEach(b=> b.addEventListener('click', ()=> socket.emit('ctrl:dfMeta', b.dataset.m)));
+  function duckfarmState(state){
+    show('dfgame');
+    const mine = me && (state.p1id===me.id ? 'Haley' : state.p2id===me.id ? 'Nick' : null);
+    $('dfAv').textContent = (me && state.p2id===me.id) ? '👦' : '👧';
+    $('dfRoleSub').textContent = mine ? ('You are '+mine+' — roam, farm, fish & ride!') : 'Watching — wait for a controller slot.';
+  }
+
   socket.on('ctrl:state', (state) => {
     lastState = state;
     if (!me) return;
@@ -1161,6 +1205,7 @@
     if (state.game === 'beacon') { beaconState(state); return; }
     if (state.game === 'tandem') { tandemState(state); return; }
     if (state.game === 'glade') { gladeState(state); return; }
+    if (state.game === 'duckfarm') { duckfarmState(state); return; }
 
     if (state.phase === 'lobby') { show('lobby'); $('birdpick').classList.remove('show'); updateStartBtn(); return; }
     show('game');

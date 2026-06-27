@@ -38,6 +38,7 @@ app.get('/poltergeist', page('poltergeist.html')); // Poltergeist (the TV)
 app.get('/beacon', page('beacon.html'));        // Beacon — 2-player co-op (the TV)
 app.get('/tandem', page('tandem.html'));        // Tandem — 2-player co-op (the TV)
 app.get('/glade', page('glade.html'));          // The Glade — co-op world builder (the TV)
+app.get('/duckfarm', page('duckfarm.html'));    // Duck Farm — 2-player cozy world (the TV)
 app.get('/play', page('controller.html'));      // phone controller
 
 function getLanIp() {
@@ -171,6 +172,10 @@ io.on('connection', (socket) => {
   socket.on('ctrl:gladeErase', forward('gladeErase')); // The Glade — remove a tile/object
   socket.on('ctrl:gladeTend', forward('gladeTend'));   // The Glade — tend (co-op build / water / pet)
   socket.on('ctrl:gladeBuy', forward('gladeBuy'));     // The Glade — unlock/buy an item with dewdrops
+  socket.on('ctrl:dfMove', forward('dfMove'));         // Duck Farm — move vector
+  socket.on('ctrl:dfAct', forward('dfAct'));           // Duck Farm — A action (act/talk/fish/place)
+  socket.on('ctrl:dfRide', forward('dfRide'));         // Duck Farm — ride / dismount a mount
+  socket.on('ctrl:dfMeta', forward('dfMeta'));         // Duck Farm — meta buttons (seed/build/flock/map/music)
   socket.on('ctrl:menu', forward('menu'));             // phone moves the menu cursor
   socket.on('ctrl:selectGame', forward('selectGame')); // phone confirms a game
   socket.on('ctrl:start', forward('start'));
