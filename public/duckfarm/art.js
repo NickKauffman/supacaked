@@ -441,6 +441,16 @@ function mat() { const b = buf(); rect(b, 2, 5, 12, 7, C.matA); rect(b, 2, 5, 12
 /* ---------------- outdoor + interior props ---------------- */
 function palm() { const b = buf(16, 24); rect(b, 7, 8, 2, 14, C.t2); rect(b, 7, 8, 1, 14, C.t1); blob(b, 8, 6, 6, 3, C.e1, C.e2, C.e3); set(b, 2, 5, C.e2); set(b, 14, 5, C.e2); set(b, 8, 2, C.e1); set(b, 8, 8, C.t3); outline(b, '#234a26'); return toCanvas(b); }
 function snowtree() { const b = buf(16, 20); rect(b, 7, 14, 2, 6, C.t2); for (let i = 0; i < 3; i++) { const w = 10 - i * 2, y = 4 + i * 3; rect(b, (16 - w) / 2 | 0, y, w, 3, C.e3); rect(b, (16 - w) / 2 | 0, y, w, 1, '#eef6ff'); } outline(b, '#234a26'); return toCanvas(b); }
+// tall leafy decor tree (16x26) — used as a PROP in forests/mountains (tiles.tree is the small map tile)
+function forestTree() {
+  const b = buf(16, 26);
+  rect(b, 7, 17, 3, 9, C.t2); rect(b, 7, 17, 1, 9, C.t1); rect(b, 9, 17, 1, 9, C.t3);   // trunk
+  blob(b, 8, 10, 7.6, 7, C.e1, C.e2, C.e3);                                              // main canopy
+  blob(b, 4, 12, 3.6, 3.2, C.e1, C.e2, C.e3); blob(b, 12, 12, 3.6, 3.2, C.e2, C.e3, C.e4);
+  blob(b, 8, 5, 4.6, 3.8, C.e1, C.e2, C.e3);                                             // crown
+  [[6, 4], [10, 5], [8, 9], [5, 8], [11, 9], [8, 13]].forEach(([x, y]) => set(b, x, y, C.e1));
+  outline(b, '#234a26'); return toCanvas(b);
+}
 function cactus() { const b = buf(); rect(b, 7, 3, 3, 12, '#4f9e4a'); rect(b, 7, 3, 1, 12, '#6fc06a'); rect(b, 4, 7, 3, 5, '#4f9e4a'); rect(b, 4, 7, 1, 5, '#6fc06a'); rect(b, 10, 9, 3, 4, '#4f9e4a'); set(b, 8, 5, '#ffd24a'); outline(b, '#2c6e30'); return toCanvas(b); }
 function gem() { const b = buf(); blob(b, 8, 9, 3.5, 4, '#9fe0ff', '#5bb6dc', '#3a8fc0'); set(b, 6, 6, '#ffffff'); outline(b, '#2a5a78'); return toCanvas(b); }
 function coral() { const b = buf(); rect(b, 7, 8, 2, 7, '#ff8a6a'); rect(b, 5, 9, 2, 5, '#ff8a6a'); rect(b, 9, 7, 2, 7, '#ffb06a'); set(b, 5, 8, '#ffb0c8'); set(b, 11, 6, '#ffb0c8'); set(b, 7, 7, '#ffd0d8'); outline(b, '#a0463a'); return toCanvas(b); }
@@ -516,7 +526,7 @@ export function buildArt() {
     },
     props: {
       fountain: fountain(), lamp: lamp(), bench: bench(), signpost: signpost(), flowerpot: flowerpot(), bush: bush(), rock: rock(), stall: stall(),
-      palm: palm(), snowtree: snowtree(), cactus: cactus(), gem: gem(), coral: coral(), snowman: snowman(), shell: shell(), fish: fish(),
+      palm: palm(), snowtree: snowtree(), tree: forestTree(), cactus: cactus(), gem: gem(), coral: coral(), snowman: snowman(), shell: shell(), fish: fish(),
       counter: counter(), shelf: shelf(), table: table(), bed: bed(), painting: painting(), barrel: barrel(),
       balloonR: balloon('#e0504a'), balloonB: balloon('#4f86cc'), balloonY: balloon('#ffd24a'), lantern2: lantern(),
     },

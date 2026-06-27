@@ -558,8 +558,8 @@ function draw() {
 
   // depth-sorted entities: props, buildings, npcs, ducks, player, eggs
   const ents = [];
-  for (const p of area.props) ents.push({ sy: (p.ty + p.h) * TILE, draw: () => { if (p.solid) shadow(p.tx * TILE + (p.w - 1) * 8, (p.ty + p.h - 1) * TILE, 4 + p.w * 2); const img = art.props[p.art]; ctx.drawImage(img, Math.round(p.tx * TILE - camX), Math.round((p.ty + p.h) * TILE - img.height - camY)); } });
-  for (const b of area.buildings) ents.push({ sy: (b.ty + b.h) * TILE - 2, draw: () => { const img = resolveBuilding(b.art); shadow(b.tx * TILE + (b.w - 1) * 8, (b.ty + b.h - 1) * TILE, 6 + b.w * 3); ctx.drawImage(img, Math.round(b.tx * TILE - camX), Math.round((b.ty + b.h) * TILE - img.height - camY)); } });
+  for (const p of area.props) ents.push({ sy: (p.ty + p.h) * TILE, draw: () => { const img = art.props[p.art]; if (!img) return; if (p.solid) shadow(p.tx * TILE + (p.w - 1) * 8, (p.ty + p.h - 1) * TILE, 4 + p.w * 2); ctx.drawImage(img, Math.round(p.tx * TILE - camX), Math.round((p.ty + p.h) * TILE - img.height - camY)); } });
+  for (const b of area.buildings) ents.push({ sy: (b.ty + b.h) * TILE - 2, draw: () => { const img = resolveBuilding(b.art); if (!img) return; shadow(b.tx * TILE + (b.w - 1) * 8, (b.ty + b.h - 1) * TILE, 6 + b.w * 3); ctx.drawImage(img, Math.round(b.tx * TILE - camX), Math.round((b.ty + b.h) * TILE - img.height - camY)); } });
   for (const n of area.npcs) ents.push({ sy: n.y + 14, draw: () => { shadow(n.x, n.y); blit(n.frames[n.dir][n.frame % n.frames[n.dir].length] || n.frames[n.dir][1], n.x, n.y, n.flip); } });
   for (const m of mounts) if (m.area === current && !m.ridden) ents.push({ sy: m.y + 14, draw: () => { shadow(m.x, m.y, m.kind === 'ostrich' ? 6 : 5); blit(art[m.kind][m.frame], m.x, m.y - (MOUNT_H[m.kind] - 16), m.flip); } });
   if (current === 'farm') { for (const g of groundEggs) ents.push({ sy: g.y + 14, draw: () => { shadow(g.x, g.y, 4); blit(art.egg, g.x, g.y); } });
@@ -699,7 +699,7 @@ function playBar() {
 }
 setInterval(() => { if (actx && !muted && state !== 'title') playBar(); }, 2400);
 function drawLabels() {
-  for (const b of area.buildings) { const img = resolveBuilding(b.art); const cx = sx((b.tx + b.w / 2) * TILE); const topY = sy((b.ty + b.h) * TILE - img.height) - 11; if (cx > -40 && cx < UW + 40 && topY > -12) label(b.name, cx, topY, '#ffe9b0'); }
+  for (const b of area.buildings) { const img = resolveBuilding(b.art); if (!img) continue; const cx = sx((b.tx + b.w / 2) * TILE); const topY = sy((b.ty + b.h) * TILE - img.height) - 11; if (cx > -40 && cx < UW + 40 && topY > -12) label(b.name, cx, topY, '#ffe9b0'); }
   for (const n of area.npcs) { const d2 = (n.x - player.x) ** 2 + (n.y - player.y) ** 2; if (d2 < 40 * 40) label(n.name, sx(n.x + 8), sy(n.y) - 12, '#cfe6ff'); }
   // interaction prompt
   const b = nearestBuilding(), n = !b && nearestNPC();
