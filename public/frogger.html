@@ -313,7 +313,8 @@
     flash('LEVEL '+G.level+'!','#ffd166'); SFX.level(); broadcast(true); }
 
   // ---- power-up items: two per level, each shows 15s / hides 3s, then reappears as a fresh random item ----
-  const ITEM_ON=15000, ITEM_OFF=3000, ITEM_TYPES=['rocket','rocket','clock','shield','egg'];   // rocket weighted a touch
+  const ITEM_ON=15000, ITEM_OFF=3000,
+    ITEM_TYPES=['rocket','rocket','rocket','rocket','rocket','rocket','egg','egg','egg','shield','shield','shield','clock','clock'];   // weights rocket 6 / egg 3 / shield 3 / clock 2 — rockets, eggs & shields are 50% more common than the clock
   function newItem(){ if(!G) return null;
     const cands=[]; G.rows.forEach((r,i)=>{ if(r.kind==='road'||r.kind==='water'||r.kind==='goal') cands.push(i); });
     if(!cands.length) return null;
@@ -334,7 +335,7 @@
       else { invAdd(b,'rocket'); flash(b.name+' grabbed a ROCKET! ('+invCount(b)+'/3)','#ffd166'); }
       SFX.power();
     } else if(type==='clock'){ G.freezeUntil=performance.now()+10000; SFX.freeze(); flash('TIME FREEZE! ⏱','#7dd3fc'); }
-    else if(type==='shield'){ b.shieldUntil=performance.now()+8000; SFX.power(); flash(b.name+' got a SHIELD!','#a78bfa'); }
+    else if(type==='shield'){ b.shieldUntil=Infinity; SFX.power(); flash(b.name+' got a SHIELD! (blocks one hit)','#a78bfa'); }   // no time limit — lasts until it absorbs a hit
     else if(type==='egg'){ invAdd(b,'egg'); SFX.power(); flash(b.name+' grabbed a GOLDEN EGG! ('+invCount(b)+'/3)','#ffd166'); }
   }
   function collectItem(b){ if(!G||!G.items||b.eliminated||b.deadAt||b.riderOf) return false;
