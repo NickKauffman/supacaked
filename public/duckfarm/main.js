@@ -249,7 +249,9 @@ const fishCount = () => FISH_ORDER.reduce((s, id) => s + (fishInv[id] || 0), 0);
 const fishValue = () => FISH_ORDER.reduce((s, id) => s + (fishInv[id] || 0) * FISH[id].value, 0);
 
 // ---------- warps ----------
+let warpCooldown = 0;
 function checkWarp() {
+  if (warpCooldown > 0) return;
   for (const p of bothPlayers()) { const tx = Math.floor((p.x + TILE / 2) / TILE), ty = Math.floor((p.y + TILE / 2) / TILE);
     for (const wrp of area.warps) if (wrp.x === tx && wrp.y === ty) { warpTo(wrp.to, wrp.tx, wrp.ty); return; } }
 }
@@ -261,6 +263,7 @@ function warpTo(name, tx, ty) {
   placeP(player, bx, by);
   const spot = nearestWalkable((bx + 1) * TILE, by * TILE); placeP(player2, Math.floor(spot.x / TILE), Math.floor(spot.y / TILE));
   player.dir = player2.dir = area.biome === 'interior' ? 'up' : 'down';
+  warpCooldown = 0.5; zoomInit = false;   // snap zoom to the new area, and don't instantly re-trigger a warp
   buildMode = false; sfx.warp();
   const t = areaTitle(name);
   say(area.biome === 'interior' ? `🚪 ${t}` : area.biome === 'underwater' ? `🌊 ${t}` : area.biome === 'cave' ? `🕯️ ${t}` : `📍 ${t}`);
@@ -464,29 +467,32 @@ function updateMounts(dt) {
 }
 
 // ---------- draw ----------
-let camX = 0, camY = 0;
-// ---- adaptive viewport: fills the screen aspect, and zooms OUT as the two players separate ----
-const BASE_COLS = 18;
-let curCols = BASE_COLS;
-function screenAspect() { return Math.max(0.9, Math.min(2.4, (window.innerWidth || 16) / (window.innerHeight || 12))); }
-function setViewSize(cols) {
-  const asp = screenAspect();
-  cols = Math.max(14, Math.round(Math.min(cols, area ? area.w + 1 : 46, 46)));
-  let rows = Math.round(cols / asp); rows = Math.max(11, Math.min(rows, area ? area.h + 1 : 34, 34));
-  const w = cols * TILE, h = rows * TILE;
-  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; ctx.imageSmoothingEnabled = false; VIEW_W = cols; VIEW_H = rows; }
+// Small fixed canvas backing (crisp pixel UI), CSS-stretched to fill the screen.
+// The WORLD is zoomed smoothly with a ctx.scale transform; UI stays in backing px.
+let camX = 0, camY = 0, zoom = 1.4, zoomTarget = 1.4, zoomInit = false;
+function resizeCanvas() {
+  const asp = (window.innerWidth || 16) / (window.innerHeight || 9);
+  const W = 360, H = Math.max(160, Math.round(W / asp));
+  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+  ctx.imageSmoothingEnabled = false;
 }
-function adjustView(dt) {
-  const asp = screenAspect();
-  const sepCols = Math.abs(player.x - player2.x) / TILE + 9;
-  const sepRowsAsCols = (Math.abs(player.y - player2.y) / TILE + 7) * asp;   // vertical separation needs proportionally more cols
-  let target = Math.max(BASE_COLS, sepCols, sepRowsAsCols);
-  target = Math.min(target, (area ? area.w + 1 : 46), 46);
-  curCols += (target - curCols) * Math.min(1, dt * 3.2);
-  setViewSize(curCols);
+resizeCanvas(); addEventListener('resize', resizeCanvas);
+const sx = (wx) => (wx - camX) * zoom, sy = (wy) => (wy - camY) * zoom;   // world px → screen px
+function fitView(dt) {
+  const CW = canvas.width, CH = canvas.height;
+  const midX = (player.x + player2.x) / 2 + 8, midY = (player.y + player2.y) / 2 + 8;
+  const base = CW / (17 * TILE);                                          // base view ≈ 17 tiles across
+  const fitX = CW / (Math.abs(player.x - player2.x) + 11 * TILE);         // zoom out to fit the pair (+margin)
+  const fitY = CH / (Math.abs(player.y - player2.y) + 9 * TILE);
+  const areaMin = Math.max(CW / (area.w * TILE), CH / (area.h * TILE));   // never zoom out past the whole area
+  zoomTarget = Math.max(areaMin, Math.min(base, fitX, fitY));
+  if (!zoomInit) { zoom = zoomTarget; zoomInit = true; }
+  else zoom += (zoomTarget - zoom) * Math.min(1, dt * 4.5);               // smooth, frame-rate independent
+  const vw = CW / zoom, vh = CH / zoom;
+  camX = (area.w * TILE <= vw) ? (area.w * TILE - vw) / 2 : Math.max(0, Math.min(midX - vw / 2, area.w * TILE - vw));
+  camY = (area.h * TILE <= vh) ? (area.h * TILE - vh) / 2 : Math.max(0, Math.min(midY - vh / 2, area.h * TILE - vh));
+  VIEW_W = Math.ceil(vw / TILE); VIEW_H = Math.ceil(vh / TILE);
 }
-addEventListener('resize', () => setViewSize(curCols));
-function updateCamera() { const mx = (player.x + player2.x) / 2, my = (player.y + player2.y) / 2; camX = Math.max(0, Math.min(mx + TILE / 2 - canvas.width / 2, area.w * TILE - canvas.width)); camY = Math.max(0, Math.min(my + TILE / 2 - canvas.height / 2, area.h * TILE - canvas.height)); }
 function shadow(x, y, rx = 5) { ctx.save(); ctx.fillStyle = 'rgba(20,16,30,0.22)'; ctx.beginPath(); ctx.ellipse(Math.round(x - camX + 8), Math.round(y - camY + 14), rx, rx * 0.42, 0, 0, 7); ctx.fill(); ctx.restore(); }
 function blit(img, x, y, flip = false) { const sx = Math.round(x - camX), sy = Math.round(y - camY); if (flip) { ctx.save(); ctx.translate(sx + TILE, sy); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0); ctx.restore(); } else ctx.drawImage(img, sx, sy); }
 function drawCharacter(p) {
@@ -503,7 +509,9 @@ function lerp(p, a, b) { const L = (i) => a[i] + (b[i] - a[i]) * p; return { r: 
 
 function bubbles() { ctx.fillStyle = 'rgba(255,255,255,0.5)'; for (let i = 0; i < 16; i++) { const bx = (i * 47 + clock * 18) % canvas.width; const by = canvas.height - ((clock * 26 + i * 37) % (canvas.height + 8)); ctx.fillRect(bx | 0, by | 0, 2, 2); } }
 function draw() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save(); ctx.scale(zoom, zoom);   // smooth world zoom; UI drawn after restore() in backing px
   const wf = art.waterFrames[(clock * 2 | 0) % 2];
   const t0x = Math.floor(camX / TILE), t0y = Math.floor(camY / TILE);
   for (let y = t0y; y <= t0y + VIEW_H + 1; y++) for (let x = t0x; x <= t0x + VIEW_W + 1; x++) {
@@ -535,19 +543,20 @@ function draw() {
   for (const p of bothPlayers()) ents.push({ sy: p.y + 14, draw: () => drawCharacter(p) });
   ents.sort((a, b) => a.sy - b.sy); for (const e of ents) e.draw();
   if (festivalDay() && current === 'quack') drawFestivalProps();
+  ctx.restore();   // ---- end world transform; everything below is screen-space UI ----
 
   // biome-aware atmosphere
   if (area.biome === 'underwater') {
     ctx.fillStyle = 'rgba(30,98,150,0.34)'; ctx.fillRect(0, 0, canvas.width, canvas.height); bubbles();
   } else if (area.biome === 'cave') {
-    const gx = player.x - camX + 8, gy = player.y - camY + 8;
-    const grd = ctx.createRadialGradient(gx, gy, 18, gx, gy, 96);
+    const gx = sx(player.x + 8), gy = sy(player.y + 8), R = canvas.height * 0.55;
+    const grd = ctx.createRadialGradient(gx, gy, R * 0.22, gx, gy, R);
     grd.addColorStop(0, 'rgba(8,6,16,0)'); grd.addColorStop(1, 'rgba(8,6,16,0.82)');
     ctx.fillStyle = grd; ctx.fillRect(0, 0, canvas.width, canvas.height);
   } else if (area.biome !== 'interior') {
     const amb = ambient(); if (amb) { ctx.fillStyle = `rgba(${amb.r},${amb.g},${amb.b},${amb.a})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
     if (tod > 0.5 || tod < 0.08) { ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      for (const p of area.props) if (p.art === 'lamp') { const gx = p.tx * TILE - camX + 8, gy = (p.ty * TILE - camY) - 4; const grd = ctx.createRadialGradient(gx, gy, 1, gx, gy, 30); grd.addColorStop(0, 'rgba(255,224,150,0.55)'); grd.addColorStop(0.5, 'rgba(255,210,120,0.22)'); grd.addColorStop(1, 'rgba(255,210,120,0)'); ctx.fillStyle = grd; ctx.fillRect(gx - 30, gy - 30, 60, 60); }
+      for (const p of area.props) if (p.art === 'lamp') { const gx = sx(p.tx * TILE + 8), gy = sy(p.ty * TILE - 4), R = 34 * zoom; const grd = ctx.createRadialGradient(gx, gy, 1, gx, gy, R); grd.addColorStop(0, 'rgba(255,224,150,0.55)'); grd.addColorStop(0.5, 'rgba(255,210,120,0.22)'); grd.addColorStop(1, 'rgba(255,210,120,0)'); ctx.fillStyle = grd; ctx.fillRect(gx - R, gy - R, R * 2, R * 2); }
       ctx.restore(); }
   }
   // penguin diving in surface water (on land maps)
@@ -574,8 +583,8 @@ function label(text, cx, baseTopPx, color = '#fffdf0') {
 // ---------- fishing UI ----------
 function drawFishing() {
   const fp = fishing.owner || player;
-  const ft = frontTile(fp); const bx = ft[0] * TILE + 8 - camX, by = ft[1] * TILE + 8 - camY;
-  ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(fp.x - camX + 8, fp.y - camY + 2); ctx.lineTo(bx, by); ctx.stroke();
+  const ft = frontTile(fp); const bx = sx(ft[0] * TILE + 8), by = sy(ft[1] * TILE + 8);
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(sx(fp.x + 8), sy(fp.y + 2)); ctx.lineTo(bx, by); ctx.stroke();
   const bob = fishing.phase === 'bite' ? Math.sin(clock * 30) * 2 : 0;
   ctx.fillStyle = fishing.phase === 'bite' ? '#ff5a5a' : '#fff'; ctx.fillRect(bx - 1, by - 1 + bob, 3, 3);
   const msg = fishing.phase === 'wait' ? 'Waiting for a bite…' : fishing.phase === 'bite' ? '❗ A bite! Press SPACE!' : (fishing.msg || '');
@@ -646,8 +655,8 @@ function playBar() {
 }
 setInterval(() => { if (actx && !muted && state !== 'title') playBar(); }, 2400);
 function drawLabels() {
-  for (const b of area.buildings) { const img = resolveBuilding(b.art); const cx = (b.tx + b.w / 2) * TILE - camX; const topY = (b.ty + b.h) * TILE - img.height - camY - 11; if (cx > -40 && cx < canvas.width + 40 && topY > -12) label(b.name, cx, topY, '#ffe9b0'); }
-  for (const n of area.npcs) { const d2 = (n.x - player.x) ** 2 + (n.y - player.y) ** 2; if (d2 < 40 * 40) label(n.name, n.x - camX + 8, n.y - camY - 12, '#cfe6ff'); }
+  for (const b of area.buildings) { const img = resolveBuilding(b.art); const cx = sx((b.tx + b.w / 2) * TILE); const topY = sy((b.ty + b.h) * TILE - img.height) - 11; if (cx > -40 && cx < canvas.width + 40 && topY > -12) label(b.name, cx, topY, '#ffe9b0'); }
+  for (const n of area.npcs) { const d2 = (n.x - player.x) ** 2 + (n.y - player.y) ** 2; if (d2 < 40 * 40) label(n.name, sx(n.x + 8), sy(n.y) - 12, '#cfe6ff'); }
   // interaction prompt
   const b = nearestBuilding(), n = !b && nearestNPC();
   if ((b || n) && state === 'play') { ctx.font = '8px monospace'; ctx.textAlign = 'center'; const tx = 'SPACE'; const w = ctx.measureText(tx).width + 10; ctx.fillStyle = 'rgba(40,30,50,0.85)'; ctx.fillRect(canvas.width / 2 - w / 2, 18, w, 12); ctx.fillStyle = '#ffe25a'; ctx.textBaseline = 'middle'; ctx.fillText(tx, canvas.width / 2, 24); ctx.textAlign = 'left'; }
@@ -691,7 +700,7 @@ function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (state === 'title') { drawTitle(now); requestAnimationFrame(loop); return; }
   if (state === 'map') { draw(); drawMap(); requestAnimationFrame(loop); return; }
-  if (state === 'play') { clock += dt; tod = (tod + dt / DAY_LEN) % 1; if (toastT > 0) toastT -= dt; updatePlayers(dt); updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); checkQuests(); adjustView(dt); updateCamera(); }
+  if (state === 'play') { clock += dt; tod = (tod + dt / DAY_LEN) % 1; if (toastT > 0) toastT -= dt; if (warpCooldown > 0) warpCooldown -= dt; updatePlayers(dt); updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); checkQuests(); fitView(dt); }
   if (state === 'fishing') { updateFishing(dt); updateNPCs(dt); }
   draw(); if (state === 'fishing') drawFishing(); updatePanel(); requestAnimationFrame(loop);
 }

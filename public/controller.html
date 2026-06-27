@@ -536,47 +536,49 @@
 </section>
 
 <style>
-  #dfgame{ padding:12px 12px 14px; }
-  #dfgame .dfhead{ display:flex; align-items:center; gap:8px; }
-  #dfgame .dfhead .av{ font-size:26px; }
-  #dfgame .dfhead .tt{ font-weight:800; letter-spacing:1px; } #dfgame .dfhead .sub{ font-size:12px; color:#9fb4c2; }
-  #dfMeta{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:12px 0; }
-  #dfMeta button{ padding:14px 6px; border-radius:12px; background:#25323e; color:#fff; border:1px solid #3a4b5a; font:inherit; font-size:14px; }
+  /* landscape layout: big floating joystick on the LEFT half, actions on the RIGHT */
+  #dfgame{ padding:0; flex-direction:row; }
+  #dfStickZone{ position:relative; flex:1; touch-action:none; -webkit-user-select:none; user-select:none;
+    background:radial-gradient(circle at 35% 50%, #1d2935, #11161e); overflow:hidden; }
+  #dfStickZone .role{ position:absolute; top:10px; left:12px; font-size:13px; color:#9fb4c2; }
+  #dfStickZone .role b{ color:#ffe9b0; }
+  #dfStickZone .hint{ position:absolute; bottom:12px; left:0; right:0; text-align:center; font-size:13px; color:#5f7585; pointer-events:none; }
+  #dfStickBase{ position:absolute; width:150px; height:150px; margin:-75px 0 0 -75px; border-radius:50%;
+    background:rgba(120,150,170,.12); border:2px solid rgba(150,180,200,.32); display:none; }
+  #dfNub{ position:absolute; left:50%; top:50%; width:70px; height:70px; margin:-35px 0 0 -35px; border-radius:50%;
+    background:rgba(95,191,106,.9); border:3px solid #d6f2d8; }
+  #dfRight{ width:48%; max-width:440px; display:flex; flex-direction:column; padding:12px; gap:10px; box-sizing:border-box; }
+  #dfMeta{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  #dfMeta button{ padding:15px 6px; border-radius:12px; background:#25323e; color:#fff; border:1px solid #3a4b5a; font:inherit; font-size:15px; touch-action:none; }
   #dfMeta button:active{ background:#3a5566; }
-  #dfControls{ flex:1; display:flex; align-items:flex-end; justify-content:space-between; gap:10px; }
-  #dfPad{ display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:8px; width:58vw; max-width:280px; aspect-ratio:1/1; }
-  #dfPad .sp{ }
-  #dfPad .dfd{ font-size:30px; background:#2a3a48; color:#eef; border:1px solid #4a6276; border-radius:16px; touch-action:none; -webkit-user-select:none; user-select:none; }
-  #dfPad .dfd:active{ background:#5fbf6a; color:#0a2a10; }
-  #dfActs{ display:flex; flex-direction:column; gap:12px; align-items:center; }
-  #dfRide{ width:74px; height:62px; border-radius:16px; font-size:26px; background:#caa05a; color:#1a1a1a; border:none; touch-action:none; }
-  #dfAct{ width:100px; height:100px; border-radius:50%; font-size:38px; font-weight:800; background:#5fbf6a; color:#0a2a10; border:none; touch-action:none; }
-  #dfRide:active, #dfAct:active{ filter:brightness(1.15); }
+  #dfActRow{ margin-top:auto; display:flex; align-items:center; justify-content:flex-end; gap:16px; }
+  #dfRide{ width:84px; height:84px; border-radius:20px; font-size:32px; background:#caa05a; color:#1a1a1a; border:none; touch-action:none; }
+  #dfAct{ width:128px; height:128px; border-radius:50%; font-size:46px; font-weight:800; background:#5fbf6a; color:#0a2a10; border:none; touch-action:none; }
+  #dfRide:active, #dfAct:active{ filter:brightness(1.15); transform:scale(.97); }
   #dfModal{ display:none; position:fixed; inset:0; background:rgba(8,12,18,.94); z-index:50; flex-direction:column; justify-content:center; padding:20px; gap:10px; }
   #dfModal .t{ font-size:22px; font-weight:800; text-align:center; }
   #dfModal .s{ font-size:14px; color:#b9cdd6; text-align:center; margin-bottom:6px; }
-  #dfModalBtns{ display:flex; flex-direction:column; gap:10px; overflow:auto; max-height:56vh; }
-  #dfModalBtns button{ text-align:left; padding:16px; font-size:15px; background:#25323e; color:#fff; border:1px solid #3a4b5a; border-radius:12px; }
+  #dfModalBtns{ display:flex; flex-direction:column; gap:10px; overflow:auto; max-height:60vh; }
+  #dfModalBtns button{ text-align:left; padding:16px; font-size:16px; background:#25323e; color:#fff; border:1px solid #3a4b5a; border-radius:12px; }
   #dfModalBtns button:disabled{ opacity:.4; }
   #dfModalClose{ margin-top:8px; padding:15px; border-radius:12px; background:#3a2f44; color:#fff; border:none; font-size:16px; }
 </style>
 <section id="dfgame" class="screen">
-  <div class="dfhead"><span class="av" id="dfAv">👧</span><span><div class="tt">DUCK FARM</div><div class="sub" id="dfRoleSub">Roam, farm, fish &amp; ride together.</div></span></div>
-  <div id="dfMeta">
-    <button data-m="seed">🌱 Seed</button>
-    <button data-m="build">🔨 Build</button>
-    <button data-m="tile">▦ Tile</button>
-    <button data-m="flock">🦆 Flock</button>
-    <button data-m="map">🗺️ Map</button>
-    <button data-m="music">🔊 Music</button>
+  <div id="dfStickZone">
+    <div class="role"><span id="dfAv">👧</span> <b id="dfRoleSub">You are Haley</b></div>
+    <div id="dfStickBase"><div id="dfNub"></div></div>
+    <div class="hint">↔ turn your phone sideways · drag anywhere here to move</div>
   </div>
-  <div id="dfControls">
-    <div id="dfPad">
-      <span class="sp"></span><button class="dfd" data-d="u">▲</button><span class="sp"></span>
-      <button class="dfd" data-d="l">◀</button><span class="sp"></span><button class="dfd" data-d="r">▶</button>
-      <span class="sp"></span><button class="dfd" data-d="d">▼</button><span class="sp"></span>
+  <div id="dfRight">
+    <div id="dfMeta">
+      <button data-m="seed">🌱 Seed</button>
+      <button data-m="build">🔨 Build</button>
+      <button data-m="tile">▦ Tile</button>
+      <button data-m="flock">🦆 Flock</button>
+      <button data-m="map">🗺️ Map</button>
+      <button data-m="music">🔊 Music</button>
     </div>
-    <div id="dfActs">
+    <div id="dfActRow">
       <button id="dfRide">🐎</button>
       <button id="dfAct">A</button>
     </div>
@@ -1208,15 +1210,18 @@
   }
 
   // ---------- Duck Farm controller ----------
-  // reliable D-pad: each button holds a direction; we resend the combined vector on change
-  const dfKeys = { u:0, d:0, l:0, r:0 }; let dfPrev='';
-  function dfSendMove(){ const key=''+dfKeys.u+dfKeys.d+dfKeys.l+dfKeys.r; if(key===dfPrev) return; dfPrev=key; socket.emit('ctrl:dfMove',{...dfKeys}); }
-  document.querySelectorAll('#dfPad .dfd').forEach(btn=>{ const d=btn.dataset.d;
-    const on =e=>{ e.preventDefault(); dfKeys[d]=1; dfSendMove(); };
-    const off=e=>{ e.preventDefault(); dfKeys[d]=0; dfSendMove(); };
-    btn.addEventListener('pointerdown',on); btn.addEventListener('pointerup',off); btn.addEventListener('pointercancel',off); btn.addEventListener('pointerleave',off);
-  });
-  // big A + ride buttons (also support press-and-hold A to repeat for fishing/dialogue)
+  // floating joystick: press ANYWHERE on the left half, drag to steer (smooth + big)
+  (function dfStick(){
+    const zone=$('dfStickZone'), base=$('dfStickBase'), nub=$('dfNub'); const R=62;
+    let active=false, ox=0, oy=0, last=0, prev='';
+    function send(dx,dy,force){ const u=dy<-0.35?1:0,d=dy>0.35?1:0,l=dx<-0.35?1:0,r=dx>0.35?1:0; const key=''+u+d+l+r; const now=Date.now();
+      if(!force && (key===prev || now-last<50)) return; last=now; prev=key; socket.emit('ctrl:dfMove',{u,d,l,r}); }
+    function down(e){ e.preventDefault(); active=true; ox=e.clientX; oy=e.clientY; const r=zone.getBoundingClientRect();
+      base.style.display='block'; base.style.left=(ox-r.left)+'px'; base.style.top=(oy-r.top)+'px'; nub.style.transform='translate(0,0)'; try{ zone.setPointerCapture(e.pointerId); }catch(_){ } }
+    function move(e){ if(!active) return; let dx=(e.clientX-ox)/R, dy=(e.clientY-oy)/R; const m=Math.hypot(dx,dy); if(m>1){dx/=m;dy/=m;} nub.style.transform='translate('+dx*R+'px,'+dy*R+'px)'; send(dx,dy,false); }
+    function up(){ if(!active) return; active=false; base.style.display='none'; prev=''; socket.emit('ctrl:dfMove',{u:0,d:0,l:0,r:0}); }
+    zone.addEventListener('pointerdown',down); zone.addEventListener('pointermove',move); zone.addEventListener('pointerup',up); zone.addEventListener('pointercancel',up); zone.addEventListener('pointerleave',up);
+  })();
   $('dfAct').addEventListener('pointerdown', e=>{ e.preventDefault(); socket.emit('ctrl:dfAct',{}); });
   $('dfRide').addEventListener('pointerdown', e=>{ e.preventDefault(); socket.emit('ctrl:dfRide',{}); });
   document.querySelectorAll('#dfMeta button').forEach(b=> b.addEventListener('pointerdown', e=>{ e.preventDefault(); socket.emit('ctrl:dfMeta', b.dataset.m); }));
