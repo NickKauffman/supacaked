@@ -44,6 +44,13 @@
       .pill i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
       .pill.off { opacity: .4; } .pill .tagr { color: #ffe9b0; font-size: 12px; margin-left: 4px; }
       #startcue { color: #dfffd0; font-size: 15px; }
+
+      /* TV must click once to unlock browser audio (the phones start the game, not the TV) */
+      #soundcue { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 40;
+        background: rgba(8,12,18,.82); border: 1px solid #4a6276; border-radius: 999px; padding: 11px 20px;
+        font-size: 15px; color: #ffe9b0; cursor: pointer; animation: scuep 1.6s ease-in-out infinite; }
+      #soundcue.hide { display: none; }
+      @keyframes scuep { 0%,100% { opacity: .7; } 50% { opacity: 1; } }
     </style>
   </head>
   <body>
@@ -53,6 +60,7 @@
 
     <div id="modal"><div class="modalbox"><h2 id="modalTitle">Shop</h2><div class="sub" id="modalSub"></div><div id="modalBtns"></div><button id="modalClose">Close</button></div></div>
     <div id="dialogue"><div class="dlgbox"><div class="name" id="dlgName">Name</div><div class="text" id="dlgText">...</div><div class="hint" id="dlgHint">▸</div></div></div>
+    <div id="soundcue" class="hide">🔊 Click the screen once to turn on sound</div>
 
     <div id="lobby">
       <div class="title">🦆 DUCK FARM</div>
@@ -102,7 +110,13 @@
         else if (type === 'dfMeta') window.__DF.ctrl(idx, 'meta', payload);
       });
 
-      function startGame() { if (!ready || started) return; started = true; window.__DF.startGame(window.__DF.hasSave()); $('lobby').classList.add('hide'); broadcast(); }
+      // Unlock audio on the first TV interaction (browsers require a gesture).
+      function armAudio() { if (window.__DF && window.__DF.enableAudio) window.__DF.enableAudio(); updateSoundCue(); }
+      function updateSoundCue() { const on = window.__DF && window.__DF.audioOn; $('soundcue').classList.toggle('hide', !started || on); }
+      ['pointerdown', 'keydown', 'touchstart'].forEach((ev) => window.addEventListener(ev, armAudio, { passive: true }));
+      setInterval(updateSoundCue, 800);
+
+      function startGame() { if (!ready || started) return; started = true; window.__DF.startGame(window.__DF.hasSave()); $('lobby').classList.add('hide'); updateSoundCue(); broadcast(); }
       function recompute() {
         const conn = [...roster.values()].filter((p) => p.connected).sort((a, b) => a.id - b.id);
         idToIdx = {}; conn.forEach((p, i) => { if (i < 2) idToIdx[p.id] = i; });

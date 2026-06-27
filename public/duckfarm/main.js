@@ -102,6 +102,13 @@ addEventListener('beforeunload', save); setInterval(save, 5000);
 
 // ---------- sound ----------
 let actx = null;
+// Browsers block audio until a user gesture. On the relay the TV never taps
+// "start" (a phone does), so the TV must arm audio on its own first click/key.
+function enableAudio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return false; } }
+  if (actx.state === 'suspended') actx.resume();
+  return actx.state === 'running';
+}
 function beep(f, dur = 0.08, type = 'square', vol = 0.05) {
   if (!actx) return; const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.value = f;
   g.gain.setValueAtTime(vol, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
@@ -167,8 +174,8 @@ canvas.addEventListener('mousedown', paintAt); canvas.addEventListener('mousemov
 function paintAt(e) {
   if (state !== 'play' || !buildMode || current !== 'farm') return;
   const r = canvas.getBoundingClientRect();
-  const tx = Math.floor(((e.clientX - r.left) * (canvas.width / r.width) + camX) / TILE);
-  const ty = Math.floor(((e.clientY - r.top) * (canvas.height / r.height) + camY) / TILE);
+  const tx = Math.floor((camX + (e.clientX - r.left) * (canvas.width / r.width) / zoom) / TILE);
+  const ty = Math.floor((camY + (e.clientY - r.top) * (canvas.height / r.height) / zoom) / TILE);
   if (tx > 0 && ty > 0 && tx < area.w - 1 && ty < area.h - 1 && !area.blocked.has(tx + ',' + ty)) {
     area.map[ty][tx] = BUILD_TILES[buildIdx]; if (BUILD_TILES[buildIdx] !== 'dirt') crops.delete(tx + ',' + ty);
   }
@@ -251,10 +258,17 @@ const fishValue = () => FISH_ORDER.reduce((s, id) => s + (fishInv[id] || 0) * FI
 
 // ---------- warps ----------
 let warpCooldown = 0;
+// edge-triggered: a warp only fires when a player STEPS onto it from a non-warp tile,
+// so arriving next to the return-warp can't bounce you straight back.
 function checkWarp() {
   if (warpCooldown > 0) return;
-  for (const p of bothPlayers()) { const tx = Math.floor((p.x + TILE / 2) / TILE), ty = Math.floor((p.y + TILE / 2) / TILE);
-    for (const wrp of area.warps) if (wrp.x === tx && wrp.y === ty) { warpTo(wrp.to, wrp.tx, wrp.ty); return; } }
+  for (const p of bothPlayers()) {
+    const tx = Math.floor((p.x + TILE / 2) / TILE), ty = Math.floor((p.y + TILE / 2) / TILE);
+    const wrp = area.warps.find((w) => w.x === tx && w.y === ty);
+    if (!wrp) { p.onWarp = false; continue; }
+    if (p.onWarp) continue;            // already standing on it (e.g. just arrived) — wait until they leave
+    p.onWarp = true; warpTo(wrp.to, wrp.tx, wrp.ty); return;
+  }
 }
 function placeP(p, tx, ty) { p.x = tx * TILE; p.y = ty * TILE; p.moving = false; p.hist = []; if (p.mount) { p.mount.area = current; p.mount.x = p.x; p.mount.y = p.y; } }
 function warpTo(name, tx, ty) {
@@ -264,6 +278,7 @@ function warpTo(name, tx, ty) {
   placeP(player, bx, by);
   const spot = nearestWalkable((bx + 1) * TILE, by * TILE); placeP(player2, Math.floor(spot.x / TILE), Math.floor(spot.y / TILE));
   player.dir = player2.dir = area.biome === 'interior' ? 'up' : 'down';
+  player.onWarp = player2.onWarp = true;  // arrived possibly on the return-warp; require stepping off before it can fire
   warpCooldown = 0.5; zoomInit = false;   // snap zoom to the new area, and don't instantly re-trigger a warp
   buildMode = false; sfx.warp();
   const t = areaTitle(name);
@@ -468,17 +483,25 @@ function updateMounts(dt) {
 }
 
 // ---------- draw ----------
-// Small fixed canvas backing (crisp pixel UI), CSS-stretched to fill the screen.
-// The WORLD is zoomed smoothly with a ctx.scale transform; UI stays in backing px.
+// The backing canvas matches (near) the on-screen resolution so the world is crisp
+// and the camera moves with fine, smooth granularity. Two coordinate spaces:
+//   • WORLD — drawn under ctx.scale(zoom): zoom is backing-px per world-px.
+//   • UI    — drawn under ctx.scale(uiScale): a fixed ~360-wide logical space so all
+//             the HUD/label sizing constants stay valid regardless of screen size.
 let camX = 0, camY = 0, zoom = 1.4, zoomTarget = 1.4, zoomInit = false;
+const UW = 360;                 // logical UI width
+let UH = 202, uiScale = 1;      // logical UI height + backing-px-per-UI-px
 function resizeCanvas() {
-  const asp = (window.innerWidth || 16) / (window.innerHeight || 9);
-  const W = 360, H = Math.max(160, Math.round(W / asp));
+  const iw = window.innerWidth || 960, ih = window.innerHeight || 540;
+  const W = Math.min(1600, Math.max(480, Math.round(iw)));     // cap for perf; ~1:1 with the screen → crisp
+  const H = Math.max(270, Math.round(W * ih / iw));
   if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
   ctx.imageSmoothingEnabled = false;
+  uiScale = W / UW; UH = H / uiScale;
 }
-resizeCanvas(); addEventListener('resize', resizeCanvas);
-const sx = (wx) => (wx - camX) * zoom, sy = (wy) => (wy - camY) * zoom;   // world px → screen px
+resizeCanvas(); addEventListener('resize', () => { resizeCanvas(); zoomInit = false; });
+// world px → UI-logical px (sx/sy are only used while the UI transform is active)
+const sx = (wx) => (wx - camX) * zoom / uiScale, sy = (wy) => (wy - camY) * zoom / uiScale;
 function fitView(dt) {
   const CW = canvas.width, CH = canvas.height;
   const midX = (player.x + player2.x) / 2 + 8, midY = (player.y + player2.y) / 2 + 8;
@@ -508,7 +531,7 @@ function drawCharacter(p) {
 function ambient() { const t = tod; if (t < 0.05) return lerp(t / 0.05, [20, 22, 60, 0.42], [255, 180, 120, 0.16]); if (t < 0.45) return null; if (t < 0.62) return lerp((t - 0.45) / 0.17, [255, 160, 110, 0.16], [40, 30, 70, 0.3]); if (t < 0.92) return { r: 16, g: 20, b: 58, a: 0.44 }; return lerp((t - 0.92) / 0.08, [16, 20, 58, 0.44], [20, 22, 60, 0.42]); }
 function lerp(p, a, b) { const L = (i) => a[i] + (b[i] - a[i]) * p; return { r: L(0) | 0, g: L(1) | 0, b: L(2) | 0, a: L(3) }; }
 
-function bubbles() { ctx.fillStyle = 'rgba(255,255,255,0.5)'; for (let i = 0; i < 16; i++) { const bx = (i * 47 + clock * 18) % canvas.width; const by = canvas.height - ((clock * 26 + i * 37) % (canvas.height + 8)); ctx.fillRect(bx | 0, by | 0, 2, 2); } }
+function bubbles() { ctx.fillStyle = 'rgba(255,255,255,0.5)'; for (let i = 0; i < 16; i++) { const bx = (i * 47 + clock * 18) % UW; const by = UH - ((clock * 26 + i * 37) % (UH + 8)); ctx.fillRect(bx | 0, by | 0, 2, 2); } }
 function draw() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -544,31 +567,33 @@ function draw() {
   for (const p of bothPlayers()) ents.push({ sy: p.y + 14, draw: () => drawCharacter(p) });
   ents.sort((a, b) => a.sy - b.sy); for (const e of ents) e.draw();
   if (festivalDay() && current === 'quack') drawFestivalProps();
-  ctx.restore();   // ---- end world transform; everything below is screen-space UI ----
+  ctx.restore();   // ---- end world transform ----
+  ctx.save(); ctx.scale(uiScale, uiScale);   // ---- everything below is UI-logical space ----
 
   // biome-aware atmosphere
   if (area.biome === 'underwater') {
-    ctx.fillStyle = 'rgba(30,98,150,0.34)'; ctx.fillRect(0, 0, canvas.width, canvas.height); bubbles();
+    ctx.fillStyle = 'rgba(30,98,150,0.34)'; ctx.fillRect(0, 0, UW, UH); bubbles();
   } else if (area.biome === 'cave') {
-    const gx = sx(player.x + 8), gy = sy(player.y + 8), R = canvas.height * 0.55;
+    const gx = sx(player.x + 8), gy = sy(player.y + 8), R = UH * 0.55;
     const grd = ctx.createRadialGradient(gx, gy, R * 0.22, gx, gy, R);
     grd.addColorStop(0, 'rgba(8,6,16,0)'); grd.addColorStop(1, 'rgba(8,6,16,0.82)');
-    ctx.fillStyle = grd; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = grd; ctx.fillRect(0, 0, UW, UH);
   } else if (area.biome !== 'interior') {
-    const amb = ambient(); if (amb) { ctx.fillStyle = `rgba(${amb.r},${amb.g},${amb.b},${amb.a})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+    const amb = ambient(); if (amb) { ctx.fillStyle = `rgba(${amb.r},${amb.g},${amb.b},${amb.a})`; ctx.fillRect(0, 0, UW, UH); }
     if (tod > 0.5 || tod < 0.08) { ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      for (const p of area.props) if (p.art === 'lamp') { const gx = sx(p.tx * TILE + 8), gy = sy(p.ty * TILE - 4), R = 34 * zoom; const grd = ctx.createRadialGradient(gx, gy, 1, gx, gy, R); grd.addColorStop(0, 'rgba(255,224,150,0.55)'); grd.addColorStop(0.5, 'rgba(255,210,120,0.22)'); grd.addColorStop(1, 'rgba(255,210,120,0)'); ctx.fillStyle = grd; ctx.fillRect(gx - R, gy - R, R * 2, R * 2); }
+      for (const p of area.props) if (p.art === 'lamp') { const gx = sx(p.tx * TILE + 8), gy = sy(p.ty * TILE - 4), R = 34 * zoom / uiScale; const grd = ctx.createRadialGradient(gx, gy, 1, gx, gy, R); grd.addColorStop(0, 'rgba(255,224,150,0.55)'); grd.addColorStop(0.5, 'rgba(255,210,120,0.22)'); grd.addColorStop(1, 'rgba(255,210,120,0)'); ctx.fillStyle = grd; ctx.fillRect(gx - R, gy - R, R * 2, R * 2); }
       ctx.restore(); }
   }
   // penguin diving in surface water (on land maps)
-  if (player.mount?.kind === 'penguin' && onWater()) { ctx.fillStyle = 'rgba(38,116,176,0.42)'; ctx.fillRect(0, 0, canvas.width, canvas.height); bubbles(); }
+  if (player.mount?.kind === 'penguin' && onWater()) { ctx.fillStyle = 'rgba(38,116,176,0.42)'; ctx.fillRect(0, 0, UW, UH); bubbles(); }
   drawSeasonWeather();
   if (festivalDay() && current === 'quack') drawFestivalBanner();
   drawLabels(); drawTopHUD();
+  ctx.restore();   // ---- end UI transform ----
 }
 function drawSeasonWeather() {
   if (area.biome === 'interior' || area.biome === 'underwater' || area.biome === 'cave') return;
-  const s = seasonFor(clock), W = canvas.width, H = canvas.height;
+  const s = seasonFor(clock), W = UW, H = UH;
   const tint = { spring: [150, 230, 170, 0.05], summer: [255, 235, 150, 0.05], autumn: [235, 150, 70, 0.13], winter: [185, 212, 255, 0.15] }[s];
   if (tint) { ctx.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${tint[3]})`; ctx.fillRect(0, 0, W, H); }
   if (weather === 'rain') {
@@ -584,12 +609,12 @@ function drawSeasonWeather() {
   }
 }
 function drawTopHUD() {
-  ctx.fillStyle = 'rgba(18,26,38,0.82)'; ctx.fillRect(0, 0, canvas.width, 12);
+  ctx.fillStyle = 'rgba(18,26,38,0.82)'; ctx.fillRect(0, 0, UW, 12);
   ctx.font = '8px monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = '#fff';
   ctx.fillText(`🪙${coins}  🥚${eggs}  🐟${fishCount()}  🦆${ducks.length}  ${todIcon()} ${SEASON_ICON[seasonFor(clock)]}${weather === 'rain' ? '🌧️' : weather === 'snow' ? '🌨️' : ''}`, 3, 6);
   const q = QUESTS[questIndex];
   if (q) { const tx = `★ ${q.text}  ${Math.min(statVal(q.stat), q.goal)}/${q.goal}`; const w = ctx.measureText(tx).width + 8;
-    ctx.fillStyle = 'rgba(18,26,38,0.82)'; ctx.fillRect(0, canvas.height - 11, w, 11); ctx.fillStyle = '#cfe6d0'; ctx.fillText(tx, 3, canvas.height - 5); }
+    ctx.fillStyle = 'rgba(18,26,38,0.82)'; ctx.fillRect(0, UH - 11, w, 11); ctx.fillStyle = '#cfe6d0'; ctx.fillText(tx, 3, UH - 5); }
 }
 
 function label(text, cx, baseTopPx, color = '#fffdf0') {
@@ -608,15 +633,15 @@ function drawFishing() {
   ctx.fillStyle = fishing.phase === 'bite' ? '#ff5a5a' : '#fff'; ctx.fillRect(bx - 1, by - 1 + bob, 3, 3);
   const msg = fishing.phase === 'wait' ? 'Waiting for a bite…' : fishing.phase === 'bite' ? '❗ A bite! Press SPACE!' : (fishing.msg || '');
   ctx.font = '8px monospace'; ctx.textAlign = 'center'; const w = ctx.measureText(msg).width + 16;
-  ctx.fillStyle = 'rgba(18,28,42,0.92)'; ctx.fillRect(canvas.width / 2 - w / 2, canvas.height - 24, w, 15);
-  ctx.fillStyle = fishing.phase === 'bite' ? '#ffd24a' : '#dfffe6'; ctx.textBaseline = 'middle'; ctx.fillText(msg, canvas.width / 2, canvas.height - 16); ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(18,28,42,0.92)'; ctx.fillRect(UW / 2 - w / 2, UH - 24, w, 15);
+  ctx.fillStyle = fishing.phase === 'bite' ? '#ffd24a' : '#dfffe6'; ctx.textBaseline = 'middle'; ctx.fillText(msg, UW / 2, UH - 16); ctx.textAlign = 'left';
 }
 
 // ---------- world map ----------
 function drawMap() {
-  ctx.fillStyle = 'rgba(10,16,26,0.95)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.textAlign = 'center'; ctx.fillStyle = '#fffdf0'; ctx.font = 'bold 11px monospace'; ctx.textBaseline = 'middle'; ctx.fillText('WORLD MAP', canvas.width / 2, 12);
-  const pad = 22, cw = (canvas.width - 2 * pad) / 2, ch = (canvas.height - 46) / 5;
+  ctx.fillStyle = 'rgba(10,16,26,0.95)'; ctx.fillRect(0, 0, UW, UH);
+  ctx.textAlign = 'center'; ctx.fillStyle = '#fffdf0'; ctx.font = 'bold 11px monospace'; ctx.textBaseline = 'middle'; ctx.fillText('WORLD MAP', UW / 2, 12);
+  const pad = 22, cw = (UW - 2 * pad) / 2, ch = (UH - 46) / 5;
   const pos = (id) => { const [c, r] = MAP_LAYOUT[id]; return [pad + (c - 2) * cw, 28 + r * ch]; };
   ctx.strokeStyle = 'rgba(150,170,190,0.5)'; ctx.lineWidth = 1;
   for (const id in MAP_LAYOUT) { const def = AREA_DEFS[id]; if (!def) continue; const a = pos(id);
@@ -627,7 +652,7 @@ function drawMap() {
     ctx.fillStyle = here ? '#3f9e54' : '#26323e'; ctx.fillRect(x - w / 2, y - 7, w, 14);
     ctx.strokeStyle = here ? '#aef0c0' : '#4a5a68'; ctx.strokeRect(x - w / 2, y - 7, w, 14);
     ctx.fillStyle = here ? '#fff' : '#cdd8e0'; ctx.fillText(name, x, y); }
-  ctx.fillStyle = '#8fa6b5'; ctx.fillText('M / Esc to close', canvas.width / 2, canvas.height - 8); ctx.textAlign = 'left';
+  ctx.fillStyle = '#8fa6b5'; ctx.fillText('M / Esc to close', UW / 2, UH - 8); ctx.textAlign = 'left';
 }
 
 // ---------- festival ----------
@@ -642,11 +667,11 @@ function drawFestivalProps() {
 function drawFestivalBanner() {
   ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const t = '✦ QUACKSBOROUGH FESTIVAL ✦'; const w = ctx.measureText(t).width + 16;
-  ctx.fillStyle = 'rgba(150,40,90,0.9)'; ctx.fillRect(canvas.width / 2 - w / 2, 16, w, 14);
-  ctx.fillStyle = '#ffe25a'; ctx.fillText(t, canvas.width / 2, 23); ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(150,40,90,0.9)'; ctx.fillRect(UW / 2 - w / 2, 16, w, 14);
+  ctx.fillStyle = '#ffe25a'; ctx.fillText(t, UW / 2, 23); ctx.textAlign = 'left';
   if (tod > 0.6 || tod < 0.05) for (let i = 0; i < 3; i++) { // fireworks at night
     const seed = Math.floor(clock / 1.3) + i * 7; const rnd = (n) => ((Math.sin(seed * 9.7 + n * 3.1) + 1) / 2);
-    const fx = rnd(1) * canvas.width, fy = rnd(2) * 70 + 10, rad = ((clock * 1.3) % 1.3) / 1.3 * 22;
+    const fx = rnd(1) * UW, fy = rnd(2) * 70 + 10, rad = ((clock * 1.3) % 1.3) / 1.3 * 22;
     ctx.strokeStyle = `hsla(${(seed * 47) % 360},90%,70%,${1 - rad / 22})`; ctx.lineWidth = 1;
     for (let a = 0; a < 8; a++) { const ang = a / 8 * 6.28; ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.cos(ang) * rad, fy + Math.sin(ang) * rad); ctx.stroke(); }
   }
@@ -674,13 +699,13 @@ function playBar() {
 }
 setInterval(() => { if (actx && !muted && state !== 'title') playBar(); }, 2400);
 function drawLabels() {
-  for (const b of area.buildings) { const img = resolveBuilding(b.art); const cx = sx((b.tx + b.w / 2) * TILE); const topY = sy((b.ty + b.h) * TILE - img.height) - 11; if (cx > -40 && cx < canvas.width + 40 && topY > -12) label(b.name, cx, topY, '#ffe9b0'); }
+  for (const b of area.buildings) { const img = resolveBuilding(b.art); const cx = sx((b.tx + b.w / 2) * TILE); const topY = sy((b.ty + b.h) * TILE - img.height) - 11; if (cx > -40 && cx < UW + 40 && topY > -12) label(b.name, cx, topY, '#ffe9b0'); }
   for (const n of area.npcs) { const d2 = (n.x - player.x) ** 2 + (n.y - player.y) ** 2; if (d2 < 40 * 40) label(n.name, sx(n.x + 8), sy(n.y) - 12, '#cfe6ff'); }
   // interaction prompt
   const b = nearestBuilding(), n = !b && nearestNPC();
-  if ((b || n) && state === 'play') { ctx.font = '8px monospace'; ctx.textAlign = 'center'; const tx = 'SPACE'; const w = ctx.measureText(tx).width + 10; ctx.fillStyle = 'rgba(40,30,50,0.85)'; ctx.fillRect(canvas.width / 2 - w / 2, 18, w, 12); ctx.fillStyle = '#ffe25a'; ctx.textBaseline = 'middle'; ctx.fillText(tx, canvas.width / 2, 24); ctx.textAlign = 'left'; }
-  if (!player.mount && state === 'play') { let nm = null, nd = 22 * 22; for (const m of mounts) { if (m.ridden || m.area !== current) continue; const d = (m.x - player.x) ** 2 + (m.y - player.y) ** 2; if (d < nd) { nd = d; nm = m; } } if (nm) label('R ride', nm.x - camX + 8, nm.y - camY - (MOUNT_H[nm.kind] - 16) - 12, '#ffe25a'); }
-  if (toastT > 0) { ctx.font = '8px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(40,30,50,0.85)'; ctx.fillRect(canvas.width / 2 - 70, canvas.height - 16, 140, 12); ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(toast, canvas.width / 2, canvas.height - 10); ctx.textAlign = 'left'; }
+  if ((b || n) && state === 'play') { ctx.font = '8px monospace'; ctx.textAlign = 'center'; const tx = 'SPACE'; const w = ctx.measureText(tx).width + 10; ctx.fillStyle = 'rgba(40,30,50,0.85)'; ctx.fillRect(UW / 2 - w / 2, 18, w, 12); ctx.fillStyle = '#ffe25a'; ctx.textBaseline = 'middle'; ctx.fillText(tx, UW / 2, 24); ctx.textAlign = 'left'; }
+  if (!player.mount && state === 'play') { let nm = null, nd = 22 * 22; for (const m of mounts) { if (m.ridden || m.area !== current) continue; const d = (m.x - player.x) ** 2 + (m.y - player.y) ** 2; if (d < nd) { nd = d; nm = m; } } if (nm) label('R ride', sx(nm.x + 8), sy(nm.y - (MOUNT_H[nm.kind] - 16)) - 12, '#ffe25a'); }
+  if (toastT > 0) { ctx.font = '8px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(40,30,50,0.85)'; ctx.fillRect(UW / 2 - 70, UH - 16, 140, 12); ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(toast, UW / 2, UH - 10); ctx.textAlign = 'left'; }
 }
 
 // ---------- side panel ----------
@@ -704,13 +729,16 @@ function updatePanel() {
 
 // ---------- title ----------
 function drawTitle(now) {
-  ctx.fillStyle = '#27506a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#8ed159'; ctx.beginPath(); ctx.moveTo(0, 130); ctx.quadraticCurveTo(canvas.width / 2, 108, canvas.width, 132); ctx.lineTo(canvas.width, canvas.height); ctx.lineTo(0, canvas.height); ctx.fill();
-  const by = 92 + Math.sin(now / 350) * 3; ctx.drawImage(art.ducks.classic[(now / 250 | 0) % 2], canvas.width / 2 - 12, by, 28, 28);
-  ctx.textAlign = 'center'; ctx.fillStyle = '#fffdf0'; ctx.font = 'bold 20px monospace'; ctx.fillText('DUCK FARM', canvas.width / 2, 46);
-  ctx.fillStyle = '#bfe0c8'; ctx.font = '8px monospace'; ctx.fillText("Haley & Nick · 2-player co-op", canvas.width / 2, 60);
-  ctx.font = '8px monospace'; if ((now / 600 | 0) % 2 === 0) { ctx.fillStyle = '#dfffd0'; ctx.fillText(hasSave() ? 'SPACE — continue' : 'SPACE — start', canvas.width / 2, 150); }
-  ctx.fillStyle = '#9fbecb'; ctx.fillText(hasSave() ? 'N — new game' : 'a cozy world to explore', canvas.width / 2, 166); ctx.textAlign = 'left';
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(uiScale, uiScale);
+  ctx.fillStyle = '#27506a'; ctx.fillRect(0, 0, UW, UH);
+  ctx.fillStyle = '#8ed159'; ctx.beginPath(); ctx.moveTo(0, 130); ctx.quadraticCurveTo(UW / 2, 108, UW, 132); ctx.lineTo(UW, UH); ctx.lineTo(0, UH); ctx.fill();
+  const by = 92 + Math.sin(now / 350) * 3; ctx.drawImage(art.ducks.classic[(now / 250 | 0) % 2], UW / 2 - 12, by, 28, 28);
+  ctx.textAlign = 'center'; ctx.fillStyle = '#fffdf0'; ctx.font = 'bold 20px monospace'; ctx.fillText('DUCK FARM', UW / 2, 46);
+  ctx.fillStyle = '#bfe0c8'; ctx.font = '8px monospace'; ctx.fillText("Haley & Nick · 2-player co-op", UW / 2, 60);
+  ctx.font = '8px monospace'; if ((now / 600 | 0) % 2 === 0) { ctx.fillStyle = '#dfffd0'; ctx.fillText(hasSave() ? 'SPACE — continue' : 'SPACE — start', UW / 2, 150); }
+  ctx.fillStyle = '#9fbecb'; ctx.fillText(hasSave() ? 'N — new game' : 'a cozy world to explore', UW / 2, 166); ctx.textAlign = 'left';
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
 // ---------- loop ----------
@@ -718,12 +746,12 @@ let last = performance.now();
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (state === 'title') { drawTitle(now); requestAnimationFrame(loop); return; }
-  if (state === 'map') { draw(); drawMap(); requestAnimationFrame(loop); return; }
+  if (state === 'map') { draw(); ctx.save(); ctx.scale(uiScale, uiScale); drawMap(); ctx.restore(); requestAnimationFrame(loop); return; }
   if (state === 'play') { clock += dt; tod = (tod + dt / DAY_LEN) % 1; if (toastT > 0) toastT -= dt; if (warpCooldown > 0) warpCooldown -= dt;
     if ((weatherT -= dt) <= 0) { const s = seasonFor(clock); weather = s === 'winter' ? (Math.random() < 0.6 ? 'snow' : 'clear') : (Math.random() < 0.3 ? 'rain' : 'clear'); weatherT = 28 + Math.random() * 34; }
     updatePlayers(dt); updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); checkQuests(); fitView(dt); }
   if (state === 'fishing') { updateFishing(dt); updateNPCs(dt); }
-  draw(); if (state === 'fishing') drawFishing(); updatePanel(); requestAnimationFrame(loop);
+  draw(); if (state === 'fishing') { ctx.save(); ctx.scale(uiScale, uiScale); drawFishing(); ctx.restore(); } updatePanel(); requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
@@ -809,7 +837,8 @@ window.__DF = {
   get s() { return { state, current, coins, eggs, inv, level, xp, ducks, mounts, walking, crops, groundEggs, discovered, stats, questIndex, selectedCrop, player, player2, clock, tod, area, fishInv, fishSeen, fishDonated, fishing }; },
   startGame, freshState, interact, openModal, closeModal, openDialogue, warpTo, cycleSeed, addXP, checkQuests, BUILDING_ACTIONS,
   spawnMount, spawnDuck, toggleRide, toggleWalk, startFishing, hookFish, touchDir,
-  ctrl: ctrlInput, primaryAction, hasSave, dfMenu, snapshot: controllerSnapshot, get state() { return state; },
+  ctrl: ctrlInput, primaryAction, hasSave, dfMenu, enableAudio, snapshot: controllerSnapshot, get state() { return state; },
+  get audioOn() { return !!actx && actx.state === 'running'; },
   setCoins: (v) => { coins = v; }, setEggs: (v) => { eggs = v; }, setInv: (o) => { inv = o; }, setLevel: (v) => { level = v; },
   set tod(v) { tod = v; }, get tod() { return tod; }, set clock(v) { clock = v; }, get clock() { return clock; },
 };
