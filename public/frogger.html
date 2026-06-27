@@ -209,6 +209,7 @@
         g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.14,t+0.1); g.gain.setValueAtTime(0.14,t+0.9); g.gain.exponentialRampToValueAtTime(0.0001,t+1.3);
         o.connect(g); g.connect(master); o.start(t); lfo.start(t); o.stop(t+1.35); lfo.stop(t+1.35); },               // eerie hum
       teleport(){ on(); [1568,1245,988,1568,2093].forEach((f,i)=>setTimeout(()=>tone(f,f*1.5,0.08,'sine',0.14),i*45)); },   // sparkly zap
+      heart(){ on(); [659,784,988,1319].forEach((f,i)=>setTimeout(()=>{ tone(f,f,0.16,'triangle',0.18); tone(f*1.5,f*1.5,0.16,'sine',0.08); },i*80)); },   // warm life-up chime
       weee(){ on(); if(!actx) return; const t=actx.currentTime, o=actx.createOscillator(), g=actx.createGain(), lfo=actx.createOscillator(), lg=actx.createGain();
         o.type='sawtooth';                                                  // buzzy kazoo "weeeee" that rides up and wobbles
         o.frequency.setValueAtTime(430,t); o.frequency.exponentialRampToValueAtTime(1500,t+0.55);
@@ -289,8 +290,8 @@
     players.forEach((p,i)=>{ const b={ id:p.id, name:p.name, color:p.color, type:p.type||'duck', connected:true,
       lives:3, score:0, hop:0, dir:'up', deadAt:0, invulnUntil:0, riderOf:null, carrying:null, rideUntil:0, eliminated:false, inv:[], shieldUntil:0,
       slot:(i+1)/(players.length+1) }; birds.set(p.id,b); });
-    G={ rows, level, levelMult:1, fish:[false,false,false,false,false], birds, started:players.length, items:[], freezeUntil:0, levelClearUntil:0, train:null, nextTrain:performance.now()+8000+Math.random()*9000, ufo:null, nextUfo:performance.now()+12000+Math.random()*10000 };
-    birds.forEach(b=>spawnBird(b,true)); placeItems();
+    G={ rows, level, levelMult:1, fish:[false,false,false,false,false], birds, started:players.length, items:[], heart:null, freezeUntil:0, levelClearUntil:0, train:null, nextTrain:performance.now()+8000+Math.random()*9000, ufo:null, nextUfo:performance.now()+24000+Math.random()*20000 };
+    birds.forEach(b=>spawnBird(b,true)); placeItems(); placeHeart();
     phase='playing'; winner=null; hideOverlay('lobby'); hideOverlay('over'); broadcast(true);
   }
   function spawnBird(b,full){ b.wx=Math.max(40,Math.min(WORLD_W-40, b.slot*WORLD_W)); b.laneIndex=G.rows.length-1; b.deadAt=0; b.hop=0;
@@ -302,14 +303,14 @@
   function clearing(){ return !!(G && G.levelClearUntil && performance.now() < G.levelClearUntil); }
   // Level beaten: pause for a short celebration so nobody dies mid-jump when the board rebuilds.
   function nextLevel(){ if(!G || G.levelClearUntil) return;
-    const now=performance.now(); G.levelClearUntil = now + LEVEL_CLEAR_MS; G.items=[]; G.train=null; G.freezeUntil=0;
+    const now=performance.now(); G.levelClearUntil = now + LEVEL_CLEAR_MS; G.items=[]; G.heart=null; G.train=null; G.freezeUntil=0;
     if(G.ufo){ const tb=G.birds.get(G.ufo.id); if(tb) tb.beamed=false; G.ufo=null; }
     G.birds.forEach(b=>{ if(!b.eliminated) b.invulnUntil = Math.max(b.invulnUntil, now + LEVEL_CLEAR_MS + 250); });   // invincible through the celebration
     flash('LEVEL '+G.level+' COMPLETE!','#34d399'); SFX.levelup(); broadcast(true);
     setTimeout(advanceLevel, LEVEL_CLEAR_MS); }
   function advanceLevel(){ if(!G) return;
     G.level++; G.levelMult=1+(G.level-1)*0.15; G.rows=buildRows(G.level); G.fish=[false,false,false,false,false]; G.levelClearUntil=0;
-    G.birds.forEach(b=>{ if(!b.eliminated) spawnBird(b,true); }); placeItems(); G.nextTrain=performance.now()+8000+Math.random()*9000; G.nextUfo=performance.now()+12000+Math.random()*10000;   // keep any unused items — they carry to the next level
+    G.birds.forEach(b=>{ if(!b.eliminated) spawnBird(b,true); }); placeItems(); placeHeart(); G.nextTrain=performance.now()+8000+Math.random()*9000; G.nextUfo=performance.now()+24000+Math.random()*20000;   // keep any unused items — they carry to the next level
     flash('LEVEL '+G.level+'!','#ffd166'); SFX.level(); broadcast(true); }
 
   // ---- power-up items: two per level, each shows 15s / hides 3s, then reappears as a fresh random item ----
@@ -323,6 +324,10 @@
     return { type:ITEM_TYPES[Math.floor(Math.random()*ITEM_TYPES.length)], lane, wx, visible:true, collected:false, until:performance.now()+ITEM_ON }; }
   function placeItems(){ if(!G) return; G.items=[]; for(let i=0;i<2;i++){ const it=newItem(); if(it) G.items.push(it); } }
   function placeRocket(){ placeItems(); }   // legacy alias for existing call sites
+  // ---- bonus heart: 50% chance per level, grants +1 life when grabbed ----
+  function placeHeart(){ if(!G) return; G.heart=null;
+    if(Math.random()<0.5){ const cands=[]; G.rows.forEach((r,i)=>{ if(r.kind==='road'||r.kind==='water') cands.push(i); });
+      if(cands.length){ const lane=cands[Math.floor(Math.random()*cands.length)]; G.heart={ lane, wx:70+Math.random()*(WORLD_W-140), collected:false }; } } }
   // ---- inventory: each bird holds up to 3 stackable items (rockets + eggs) ----
   const INV_MAX=3;
   const invHas=(b,t)=>!!(b.inv && b.inv.includes(t));
@@ -338,8 +343,11 @@
     else if(type==='shield'){ b.shieldUntil=Infinity; SFX.power(); flash(b.name+' got a SHIELD! (blocks one hit)','#a78bfa'); }   // no time limit — lasts until it absorbs a hit
     else if(type==='egg'){ invAdd(b,'egg'); SFX.power(); flash(b.name+' grabbed a GOLDEN EGG! ('+invCount(b)+'/3)','#ffd166'); }
   }
-  function collectItem(b){ if(!G||!G.items||b.eliminated||b.deadAt||b.riderOf) return false;
-    for(const it of G.items){ if(!it.visible||it.collected) continue;
+  function collectItem(b){ if(!G||b.eliminated||b.deadAt||b.riderOf) return false;
+    const h=G.heart;   // bonus life heart
+    if(h && !h.collected && b.laneIndex===h.lane && Math.abs(b.wx-h.wx)<34){
+      h.collected=true; b.lives=Math.min(5,b.lives+1); SFX.heart(); flash(b.name+' got a HEART — +1 life! ❤','#ff5c8a'); broadcast(true); }
+    if(G.items) for(const it of G.items){ if(!it.visible||it.collected) continue;
       if(b.laneIndex!==it.lane || Math.abs(b.wx-it.wx)>34) continue;
       if((it.type==='egg' || (it.type==='rocket' && !b.carrying)) && invCount(b)>=INV_MAX) continue;   // inventory full (clock/shield are instant, always collectible)
       it.collected=true; it.visible=false; itemEffect(b,it.type); broadcast(true); return true; }
@@ -460,16 +468,19 @@
         G.ufo={ id:b.id, phase:'in', t0:now, hx:b.wx, hlane:b.laneIndex }; SFX.ufo(); flash('👽 UFO INCOMING!','#a8ff60'); broadcast(true); }
       else G.nextUfo=now+4000; } return; }
     const U=G.ufo, b=G.birds.get(U.id), e=now-U.t0;
-    if(!b||b.eliminated){ G.ufo=null; G.nextUfo=now+12000+Math.random()*12000; return; }
+    if(!b||b.eliminated){ G.ufo=null; G.nextUfo=now+24000+Math.random()*24000; return; }
     if(U.phase==='in'){ if(e>800){ U.phase='beam'; U.t0=now; } }
     else if(U.phase==='beam'){ if(e>1100){
       const safe=[]; G.rows.forEach((r,i)=>{ if(r.kind==='safe') safe.push(i); });
-      const dest = safe.length ? safe[Math.floor(Math.random()*safe.length)] : Math.max(0,b.laneIndex-3);
+      const ahead=safe.filter(i=>i<b.laneIndex), behind=safe.filter(i=>i>b.laneIndex);   // forward = toward the goal
+      let pool = (Math.random()<0.8 ? (ahead.length?ahead:behind) : (behind.length?behind:ahead));   // 80% forward, 20% back
+      if(!pool.length) pool=safe;
+      const dest = pool.length ? pool[Math.floor(Math.random()*pool.length)] : Math.max(0,b.laneIndex-3);
       const fwd = dest < b.laneIndex;
       b.laneIndex=dest; b.wx=Math.max(40,Math.min(WORLD_W-40, 60+Math.random()*(WORLD_W-120))); b.vx=b.wx; b.vly=b.laneIndex;
       b.beamed=false; b.invulnUntil=now+1600; b.hop=0; b.checkpoint=Math.min(b.checkpoint==null?1e9:b.checkpoint, dest);
       U.phase='out'; U.t0=now; U.hx=b.wx; U.hlane=dest; SFX.teleport(); flash('👽 '+b.name+(fwd?' got beamed FORWARD!':' got beamed back!'),'#a8ff60'); broadcast(true); } }
-    else if(U.phase==='out'){ if(e>700){ G.ufo=null; G.nextUfo=now+13000+Math.random()*12000; broadcast(true); } } }
+    else if(U.phase==='out'){ if(e>700){ G.ufo=null; G.nextUfo=now+26000+Math.random()*24000; broadcast(true); } } }
 
   // ---- input from phones ----
   function roomLeaderId(){ const c=[...roster.values()].filter(p=>p.connected).sort((a,b)=>a.id-b.id); return c[0]?c[0].id:null; }
@@ -606,6 +617,10 @@
     ctx.fillStyle='#a78bfa'; ctx.beginPath(); ctx.moveTo(0,-12); ctx.lineTo(10,-7); ctx.lineTo(10,3); ctx.quadraticCurveTo(0,14,0,14); ctx.quadraticCurveTo(-10,3,-10,3); ctx.lineTo(-10,-7); ctx.closePath(); ctx.fill();
     ctx.fillStyle='rgba(255,255,255,.85)'; ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(7,-5.5); ctx.lineTo(7,2); ctx.quadraticCurveTo(0,10,0,10); ctx.quadraticCurveTo(-7,2,-7,2); ctx.lineTo(-7,-5.5); ctx.closePath(); ctx.fill();
     ctx.fillStyle='#a78bfa'; ctx.fillRect(-1.6,-6,3.2,11); ctx.fillRect(-5,-1.6,10,3.2); ctx.restore(); }
+  function mHeart(cx,cy){ const [sx,sy]=v3(cx,cy,6); const t=performance.now()/1000, y=sy-26*S+Math.sin(t*4)*3*S, pulse=1+Math.sin(t*5)*0.1;
+    itemGlow(sx,y,'rgba(255,92,138,.6)'); ctx.save(); ctx.translate(sx,y); ctx.scale(S*pulse,S*pulse);
+    ctx.fillStyle='#ff5c8a'; ctx.beginPath(); ctx.moveTo(0,9); ctx.bezierCurveTo(-12,-2,-8,-12,0,-5); ctx.bezierCurveTo(8,-12,12,-2,0,9); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.6)'; ctx.beginPath(); ctx.ellipse(-3.5,-3,2,3,-0.5,0,7); ctx.fill(); ctx.restore(); }
   function mItem(it){ if(it.type==='rocket') mRocket(it.wx,G.rows[it.lane].wy); else if(it.type==='clock') mClock(it.wx,G.rows[it.lane].wy); else if(it.type==='egg') mEgg(it.wx,G.rows[it.lane].wy); else if(it.type==='shield') mShieldIcon(it.wx,G.rows[it.lane].wy); }
   function mBubble(cx,cy,z){ const [sx,sy]=v3(cx,cy,z+14); const t=performance.now()/1000, r=26*S*(1+Math.sin(t*5)*0.04);
     ctx.save(); ctx.strokeStyle='rgba(167,139,250,.9)'; ctx.lineWidth=2.5*S; ctx.beginPath(); ctx.arc(sx,sy,r,0,7); ctx.stroke();
@@ -656,6 +671,7 @@
       if(r.trees) for(const t of r.trees) sprites.push({wy:r.wy+18,draw:()=>mTree(t.x,r.wy)}); }
     if(G){ const slotW=WORLD_W/5; for(let i=0;i<5;i++) if(G.fish[i]) sprites.push({wy:rows[0].wy,draw:()=>mFish((i+0.5)*slotW,rows[0].wy,FISH_COLORS[i])});
       if(G.items) for(const it of G.items){ if(it.visible && rows[it.lane]){ const ry=rows[it.lane].wy; sprites.push({wy:ry+2,draw:()=>mItem(it)}); } }
+      if(G.heart && !G.heart.collected && rows[G.heart.lane]){ const hk=G.heart, hy=rows[hk.lane].wy; sprites.push({wy:hy+2,draw:()=>mHeart(hk.wx,hy)}); }
       if(G.train && rows[G.train.lane]){ const T=G.train, ry=rows[T.lane].wy;
         if(T.phase==='warn'){ sprites.push({wy:ry+1,draw:()=>{ if(Math.floor(performance.now()/180)%2===0){ const cx=WORLD_W/2; quad(cx,ry,WORLD_W+GROUND_EXT*2,LANE_DEPTH,0.6,'rgba(255,60,60,.32)'); } }}); }
         else sprites.push({wy:ry+3,draw:()=>mTrain(T.x,ry,T.dir,T.w)}); }
@@ -702,8 +718,8 @@
   let __aiTicks=0, __hops=0;
   window.__ai = (on)=>{ AI_ON = (on !== false); return AI_ON; };
   window.__launch = (slow)=>{ const b=[...G.birds.values()].find(x=>!x.eliminated&&!x.launch); if(!b) return 'none'; rocketLaunch(b); if(slow&&b.launch) b.launch.dur=3200; return b.name; };   // test: force a rocket flight (slow=longer for screenshots)
-  window.__jump = (n)=>{ if(!G) return 'no game'; G.level=Math.max(1,n|0); G.levelMult=1+(G.level-1)*0.15; G.rows=buildRows(G.level); G.fish=[false,false,false,false,false]; G.levelClearUntil=0; G.freezeUntil=0; G.train=null; G.nextTrain=performance.now()+6000; G.ufo=null; G.nextUfo=performance.now()+6000; G.birds.forEach(b=>{ if(!b.eliminated){ b.inv=[]; b.shieldUntil=0; b.beamed=false; spawnBird(b,true); } }); placeItems(); flash('LEVEL '+G.level+'!','#ffd166'); SFX.level(); broadcast(true); return G.level; };   // demo: fast-forward to a level
-  window.__dbg = ()=> !G ? {lvl:0,phase,roster:roster.size,room:ROOM,conn:socket.connected,birds:[]} : { lvl:G.level, fish:G.fish.filter(Boolean).length, ai:AI_ON, phase, clearing:clearing(), items:(G.items||[]).map(it=>({t:it.type,vis:it.visible})), frozen:G.freezeUntil>performance.now(), train:G.train?G.train.phase:null, ticks:__aiTicks, hops:__hops, birds:[...G.birds.values()].map(b=>({ n:b.name, lane:b.laneIndex, kind:(G.rows[b.laneIndex]||{}).kind, inv:(b.inv||[]).slice(), sh:performance.now()<b.shieldUntil, wx:Math.round(b.wx), sc:b.score, d:b.deaths||0, dead:!!b.deadAt })) };
+  window.__jump = (n)=>{ if(!G) return 'no game'; G.level=Math.max(1,n|0); G.levelMult=1+(G.level-1)*0.15; G.rows=buildRows(G.level); G.fish=[false,false,false,false,false]; G.levelClearUntil=0; G.freezeUntil=0; G.train=null; G.nextTrain=performance.now()+6000; G.ufo=null; G.nextUfo=performance.now()+6000; G.birds.forEach(b=>{ if(!b.eliminated){ b.inv=[]; b.shieldUntil=0; b.beamed=false; spawnBird(b,true); } }); placeItems(); placeHeart(); flash('LEVEL '+G.level+'!','#ffd166'); SFX.level(); broadcast(true); return G.level; };   // demo: fast-forward to a level
+  window.__dbg = ()=> !G ? {lvl:0,phase,roster:roster.size,room:ROOM,conn:socket.connected,birds:[]} : { lvl:G.level, fish:G.fish.filter(Boolean).length, ai:AI_ON, phase, clearing:clearing(), items:(G.items||[]).map(it=>({t:it.type,vis:it.visible})), heart:G.heart?{lane:G.heart.lane,col:G.heart.collected}:null, frozen:G.freezeUntil>performance.now(), train:G.train?G.train.phase:null, ticks:__aiTicks, hops:__hops, birds:[...G.birds.values()].map(b=>({ n:b.name, lane:b.laneIndex, kind:(G.rows[b.laneIndex]||{}).kind, inv:(b.inv||[]).slice(), sh:performance.now()<b.shieldUntil, wx:Math.round(b.wx), sc:b.score, d:b.deaths||0, dead:!!b.deadAt })) };
   function roadClear(lane, wx){
     const v = lane.dir*lane.speed*G.levelMult;        // px/s
     for(const e of lane.ents){
