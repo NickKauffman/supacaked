@@ -176,6 +176,7 @@ io.on('connection', (socket) => {
   socket.on('ctrl:dfAct', forward('dfAct'));           // Duck Farm — A action (act/talk/fish/place)
   socket.on('ctrl:dfRide', forward('dfRide'));         // Duck Farm — ride / dismount a mount
   socket.on('ctrl:dfMeta', forward('dfMeta'));         // Duck Farm — meta buttons (seed/build/flock/map/music)
+  socket.on('ctrl:dfMenu', forward('dfMenu'));         // Duck Farm — pick / close a pop-up shop choice
   socket.on('ctrl:menu', forward('menu'));             // phone moves the menu cursor
   socket.on('ctrl:selectGame', forward('selectGame')); // phone confirms a game
   socket.on('ctrl:start', forward('start'));

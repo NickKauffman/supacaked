@@ -8,10 +8,8 @@
       :root { color-scheme: dark; }
       html, body { margin: 0; height: 100%; background: radial-gradient(circle at 50% 20%, #243646, #11161e 70%);
         font-family: ui-monospace, Menlo, monospace; color: #e6e6ea; overflow: hidden; }
-      .stage { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
-      h1 { font-size: 18px; margin: 4px 0 0; letter-spacing: 1px; }
-      canvas#game { image-rendering: pixelated; width: min(96vw, 1100px); height: auto; aspect-ratio: 4 / 3;
-        border-radius: 12px; box-shadow: 0 14px 50px rgba(0,0,0,.6), 0 0 0 3px #3a4b5a; background: #8ed159; }
+      .stage { position: fixed; inset: 0; }
+      canvas#game { position: fixed; inset: 0; width: 100vw; height: 100vh; image-rendering: pixelated; background: #8ed159; display: block; }
       /* phones are the controllers on SupaCaked — never show the on-screen pads on the TV */
       #touch { display: none !important; }
       .panel, .hint { display: none !important; }
@@ -50,7 +48,6 @@
   </head>
   <body>
     <div class="stage">
-      <h1>🦆 DUCK FARM</h1>
       <canvas id="game" width="256" height="192"></canvas>
     </div>
 
@@ -97,6 +94,7 @@
       socket.on('host:input', ({ id, type, payload }) => {
         if (type === 'start') { startGame(); return; }
         if (!ready || !started) return;
+        if (type === 'dfMenu') { window.__DF.dfMenu(payload || {}); return; }   // pop-up choices from the phone
         const idx = idToIdx[id]; if (idx === undefined) return;
         if (type === 'dfMove') window.__DF.ctrl(idx, 'move', payload || {});
         else if (type === 'dfAct') window.__DF.ctrl(idx, 'act');
@@ -121,9 +119,11 @@
           el.innerHTML = `<i style="background:${p.color}"></i>${p.name}<span class="tagr">${role}</span>`; list.appendChild(el); }); }
         $('startcue').textContent = conn.length >= 2 ? 'Both players in — explore together! 🦆' : conn.length === 1 ? 'Haley\'s ready — get a 2nd phone for Nick!' : 'Open the join link on your phone to start…';
       }
-      let lastB = 0;
-      function broadcast() { const now = Date.now(); if (now - lastB < 120) return; lastB = now; socket.emit('host:state', { game: 'duckfarm', started }); }
-      setInterval(broadcast, 1000);
+      function broadcast() {
+        let p1id = null, p2id = null; for (const id in idToIdx) { if (idToIdx[id] === 0) p1id = +id; else if (idToIdx[id] === 1) p2id = +id; }
+        socket.emit('host:state', { game: 'duckfarm', started, p1id, p2id, ctrl: (ready && window.__DF) ? window.__DF.snapshot() : null });
+      }
+      setInterval(broadcast, 200);   // frequent enough for pop-up menus to reach the phones promptly
     })();
     </script>
   </body>

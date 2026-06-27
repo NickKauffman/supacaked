@@ -6,7 +6,7 @@ import { CROPS, CROP_ORDER, QUESTS, xpForLevel, FISH, FISH_ORDER, FISH_POOLS, bi
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
-const VIEW_W = canvas.width / TILE, VIEW_H = canvas.height / TILE;
+let VIEW_W = canvas.width / TILE, VIEW_H = canvas.height / TILE;
 const SAVE_KEY = 'duckfarm.save.v3';
 const DAY_LEN = 150, EGG_PRICE = 5, DUCK_PRICE = 20;
 const EMPORIUM = { classic: 15, pekin: 22, mallard: 26, slate: 40, rosy: 70 };
@@ -289,6 +289,7 @@ function nearestNPC(p = player) {
   return best;
 }
 function interact(p = player) {
+  actingPlayer = p;
   const b = nearestBuilding(p); if (b) { if (b.action === 'enter') enterInterior(b.gid); else BUILDING_ACTIONS[b.action]?.(b); return; }
   const n = nearestNPC(p); if (n) { n.dir = p.y < n.y ? 'up' : p.x < n.x ? 'side' : 'down'; n.flip = p.x < n.x;
     if (n.action && BUILDING_ACTIONS[n.action]) BUILDING_ACTIONS[n.action](n); else openDialogue(n.name, n.lines); return; }
@@ -309,13 +310,27 @@ function advanceDialogue() { dlgI++; if (!dlg || dlgI >= dlg.lines.length) { $('
 function renderDialogue() { $('dlgName').textContent = dlg.name; $('dlgText').textContent = dlg.lines[dlgI]; $('dlgHint').textContent = dlgI < dlg.lines.length - 1 ? '▸ SPACE' : '✓ SPACE'; $('dialogue').style.display = 'block'; }
 
 // ---------- modal / shops ----------
-let modalRefresh = null;
+let modalRefresh = null, modalOwner = 0, actingPlayer = null;
 function openModal(title, sub, buttons) {
   state = 'modal'; modalRefresh = null; if ($('dialogue')) $('dialogue').style.display = 'none';
+  modalOwner = actingPlayer === player2 ? 1 : 0;
   $('modalTitle').textContent = title; $('modalSub').innerHTML = sub;
   const box = $('modalBtns'); box.innerHTML = '';
   for (const bt of buttons) { const el = document.createElement('button'); el.textContent = bt.label; el.disabled = !!bt.disabled; if (!bt.disabled) el.onclick = () => { bt.onClick(); }; box.appendChild(el); }
   $('modal').style.display = 'flex';
+}
+// phone picks a modal option (or closes) — drives the TV's modal buttons
+function dfMenu(payload) {
+  if (state !== 'modal') return;
+  if (payload && payload.close) { closeModal(); return; }
+  const i = payload && payload.index; const b = $('modalBtns').children[i]; if (b && !b.disabled) b.click();
+}
+// snapshot the parts a phone needs (so it can show & pick modal choices)
+function controllerSnapshot() {
+  let modal = null;
+  if (state === 'modal') modal = { title: $('modalTitle').textContent, sub: $('modalSub').innerHTML, owner: modalOwner,
+    options: [...$('modalBtns').children].map((b) => ({ label: b.textContent, disabled: b.disabled })) };
+  return { modal, dialogue: state === 'dialogue' ? { name: $('dlgName').textContent, text: $('dlgText').textContent } : null, map: state === 'map' };
 }
 function closeModal() { $('modal').style.display = 'none'; state = 'play'; }
 const cropCount = () => CROP_ORDER.reduce((s, id) => s + (inv[id] || 0), 0);
@@ -382,7 +397,7 @@ function updateOne(p, dt) {
   p.moving = dx !== 0 || dy !== 0;
   const kind = p.mount?.kind, speed = kind ? MOUNT_SPEED[kind] : p.speed;
   const stuck = !kind && solidAt(p.x + 8, p.y + 8);
-  const ok = (nx, ny) => (kind ? canRide(nx, ny, kind) : (stuck || canMove(nx, ny))) && withinTether(p, nx, ny);
+  const ok = (nx, ny) => kind ? canRide(nx, ny, kind) : (stuck || canMove(nx, ny));   // no leash — camera zooms to keep both in view
   if (p.moving) {
     const len = Math.hypot(dx, dy) || 1, sx = (dx / len) * speed, sy = (dy / len) * speed;
     if (ok(p.x + sx, p.y)) p.x += sx; if (ok(p.x, p.y + sy)) p.y += sy;
@@ -450,6 +465,27 @@ function updateMounts(dt) {
 
 // ---------- draw ----------
 let camX = 0, camY = 0;
+// ---- adaptive viewport: fills the screen aspect, and zooms OUT as the two players separate ----
+const BASE_COLS = 18;
+let curCols = BASE_COLS;
+function screenAspect() { return Math.max(0.9, Math.min(2.4, (window.innerWidth || 16) / (window.innerHeight || 12))); }
+function setViewSize(cols) {
+  const asp = screenAspect();
+  cols = Math.max(14, Math.round(Math.min(cols, area ? area.w + 1 : 46, 46)));
+  let rows = Math.round(cols / asp); rows = Math.max(11, Math.min(rows, area ? area.h + 1 : 34, 34));
+  const w = cols * TILE, h = rows * TILE;
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; ctx.imageSmoothingEnabled = false; VIEW_W = cols; VIEW_H = rows; }
+}
+function adjustView(dt) {
+  const asp = screenAspect();
+  const sepCols = Math.abs(player.x - player2.x) / TILE + 9;
+  const sepRowsAsCols = (Math.abs(player.y - player2.y) / TILE + 7) * asp;   // vertical separation needs proportionally more cols
+  let target = Math.max(BASE_COLS, sepCols, sepRowsAsCols);
+  target = Math.min(target, (area ? area.w + 1 : 46), 46);
+  curCols += (target - curCols) * Math.min(1, dt * 3.2);
+  setViewSize(curCols);
+}
+addEventListener('resize', () => setViewSize(curCols));
 function updateCamera() { const mx = (player.x + player2.x) / 2, my = (player.y + player2.y) / 2; camX = Math.max(0, Math.min(mx + TILE / 2 - canvas.width / 2, area.w * TILE - canvas.width)); camY = Math.max(0, Math.min(my + TILE / 2 - canvas.height / 2, area.h * TILE - canvas.height)); }
 function shadow(x, y, rx = 5) { ctx.save(); ctx.fillStyle = 'rgba(20,16,30,0.22)'; ctx.beginPath(); ctx.ellipse(Math.round(x - camX + 8), Math.round(y - camY + 14), rx, rx * 0.42, 0, 0, 7); ctx.fill(); ctx.restore(); }
 function blit(img, x, y, flip = false) { const sx = Math.round(x - camX), sy = Math.round(y - camY); if (flip) { ctx.save(); ctx.translate(sx + TILE, sy); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0); ctx.restore(); } else ctx.drawImage(img, sx, sy); }
@@ -589,9 +625,26 @@ function drawFestivalBanner() {
 }
 
 // ---------- music ----------
-const TUNE = [0, 4, 7, 12, 7, 4, 2, 5, 9, 5, 7, 4];
-let mi = 0;
-setInterval(() => { if (actx && !muted && (state === 'play' || state === 'fishing')) { const semi = TUNE[mi % TUNE.length]; beep(261.63 * Math.pow(2, semi / 12), 0.34, 'triangle', 0.022); if (mi % 4 === 0) beep(130.8 * Math.pow(2, semi / 12), 0.42, 'sine', 0.02); mi++; } }, 470);
+// ---- lo-fi chill: a maj7 / m7 progression with soft pads, warm bass & a sparse melody ----
+// Cmaj7 → Am7 → Fmaj7 → G7  (semitones from C, played around C3)
+const CHORDS = [[0, 4, 7, 11], [-3, 0, 4, 7], [-7, -3, 0, 5], [-5, -1, 2, 5]];
+const MEL = [11, 7, 4, 9, 12, 7]; // gentle maj7-color melody notes
+let mBar = 0, mC3 = 130.81;
+function softNote(freq, dur, type, vol, when) { // a pad-ish note with slow attack
+  if (!actx) return; const t0 = actx.currentTime + (when || 0); const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = freq; g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.25);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur); o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+}
+function playBar() {
+  if (!actx || muted) return; const ch = CHORDS[mBar % CHORDS.length];
+  ch.forEach((s) => softNote(mC3 * Math.pow(2, s / 12), 2.4, 'sine', 0.02));      // warm pad
+  softNote(mC3 / 2 * Math.pow(2, ch[0] / 12), 2.2, 'triangle', 0.03);            // mellow bass
+  const m = MEL[mBar % MEL.length];
+  softNote(mC3 * 2 * Math.pow(2, m / 12), 0.7, 'triangle', 0.014, 0.55);          // sparse melody
+  if (mBar % 2 === 1) softNote(mC3 * 2 * Math.pow(2, (m - 5) / 12), 0.5, 'sine', 0.01, 1.4);
+  mBar++;
+}
+setInterval(() => { if (actx && !muted && state !== 'title') playBar(); }, 2400);
 function drawLabels() {
   for (const b of area.buildings) { const img = resolveBuilding(b.art); const cx = (b.tx + b.w / 2) * TILE - camX; const topY = (b.ty + b.h) * TILE - img.height - camY - 11; if (cx > -40 && cx < canvas.width + 40 && topY > -12) label(b.name, cx, topY, '#ffe9b0'); }
   for (const n of area.npcs) { const d2 = (n.x - player.x) ** 2 + (n.y - player.y) ** 2; if (d2 < 40 * 40) label(n.name, n.x - camX + 8, n.y - camY - 12, '#cfe6ff'); }
@@ -638,7 +691,7 @@ function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (state === 'title') { drawTitle(now); requestAnimationFrame(loop); return; }
   if (state === 'map') { draw(); drawMap(); requestAnimationFrame(loop); return; }
-  if (state === 'play') { clock += dt; tod = (tod + dt / DAY_LEN) % 1; if (toastT > 0) toastT -= dt; updatePlayers(dt); updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); checkQuests(); updateCamera(); }
+  if (state === 'play') { clock += dt; tod = (tod + dt / DAY_LEN) % 1; if (toastT > 0) toastT -= dt; updatePlayers(dt); updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); checkQuests(); adjustView(dt); updateCamera(); }
   if (state === 'fishing') { updateFishing(dt); updateNPCs(dt); }
   draw(); if (state === 'fishing') drawFishing(); updatePanel(); requestAnimationFrame(loop);
 }
@@ -646,6 +699,7 @@ requestAnimationFrame(loop);
 
 // ---------- touch controls ----------
 function primaryAction(p) {
+  actingPlayer = p;
   if (state === 'title') { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); startGame(hasSave()); return; }
   if (state === 'dialogue') { advanceDialogue(); return; }
   if (state === 'fishing') { hookFish(); return; }
@@ -725,7 +779,7 @@ window.__DF = {
   get s() { return { state, current, coins, eggs, inv, level, xp, ducks, mounts, walking, crops, groundEggs, discovered, stats, questIndex, selectedCrop, player, player2, clock, tod, area, fishInv, fishSeen, fishDonated, fishing }; },
   startGame, freshState, interact, openModal, closeModal, openDialogue, warpTo, cycleSeed, addXP, checkQuests, BUILDING_ACTIONS,
   spawnMount, spawnDuck, toggleRide, toggleWalk, startFishing, hookFish, touchDir,
-  ctrl: ctrlInput, primaryAction, hasSave, get state() { return state; },
+  ctrl: ctrlInput, primaryAction, hasSave, dfMenu, snapshot: controllerSnapshot, get state() { return state; },
   setCoins: (v) => { coins = v; }, setEggs: (v) => { eggs = v; }, setInv: (o) => { inv = o; }, setLevel: (v) => { level = v; },
   set tod(v) { tod = v; }, get tod() { return tod; }, set clock(v) { clock = v; }, get clock() { return clock; },
 };
