@@ -112,7 +112,7 @@
 
       // Unlock audio on the first TV interaction (browsers require a gesture).
       function armAudio() { if (window.__DF && window.__DF.enableAudio) window.__DF.enableAudio(); updateSoundCue(); }
-      function updateSoundCue() { const on = window.__DF && window.__DF.audioOn; $('soundcue').classList.toggle('hide', !started || on); }
+      function updateSoundCue() { const el = $('soundcue'); if (!el) return; const on = window.__DF && window.__DF.audioOn; el.classList.toggle('hide', !started || on); }
       ['pointerdown', 'keydown', 'touchstart'].forEach((ev) => window.addEventListener(ev, armAudio, { passive: true }));
       setInterval(updateSoundCue, 800);
 

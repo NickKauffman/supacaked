@@ -279,6 +279,7 @@ function checkWarp() {
 }
 function placeP(p, tx, ty) { p.x = tx * TILE; p.y = ty * TILE; if (solidAt(p.x + 8, p.y + 8)) { const wlk = nearestWalkable(p.x, p.y); p.x = wlk.x; p.y = wlk.y; } p.moving = false; p.hist = []; if (p.mount) { p.mount.area = current; p.mount.x = p.x; p.mount.y = p.y; } }
 function warpTo(name, tx, ty) {
+  if (fishing) { fishing = null; if (state === 'fishing') state = 'play'; }   // never carry a cast line into a new area
   current = name; area = getArea(name);
   const ent = area.entrance || [Math.floor(area.w / 2), Math.floor(area.h / 2)];
   const bx = (tx ?? ent[0]), by = (ty ?? ent[1]);
@@ -612,7 +613,7 @@ function drawSeasonWeather() {
   } else if (weather === 'snow') {
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
     for (let i = 0; i < 60; i++) { const x = (i * 61 + Math.sin((clock + i) * 0.6) * 14 + clock * 22) % (W + 20) - 10, y = ((i * 43 + clock * 60) % (H + 20)) - 10; ctx.fillRect(x | 0, y | 0, 2, 2); }
-  } else if (s === 'autumn' || s === 'spring') {   // gentle drifting leaves / petals
+  } else if ((s === 'autumn' || s === 'spring') && (area.biome === 'grass' || area.biome === 'forest' || area.biome === 'mountain')) {   // drifting leaves/petals only over greenery
     ctx.fillStyle = s === 'autumn' ? 'rgba(214,140,60,0.85)' : 'rgba(255,190,215,0.85)';
     for (let i = 0; i < 16; i++) { const x = (i * 97 + Math.sin((clock + i) * 0.8) * 22 + clock * 16) % (W + 20) - 10, y = ((i * 57 + clock * 34) % (H + 20)) - 10; ctx.fillRect(x | 0, y | 0, 3, 3); }
   }
