@@ -77,6 +77,10 @@ const GATES = {
   pinnacle: [{   // hint only — the ice lane itself is the challenge (slide-until-wall, see updateOne)
     id: 'ice_frost', kind: 'ice', hintAt: [24, 11], hint: '❄️ Glide the ice bridge to Frostfall',
   }],
+  frost: [{   // dive the ice hole on a penguin to reach the Glacier Depths
+    id: 'dive_glacier', kind: 'mount', tile: [16, 15], need: 'penguin',
+    hintAt: [16, 14], hint: '🐧 Dive the ice hole on a penguin',
+  }],
 };
 const RUNES = ['🐟', '🌸', '🥚', '⭐', '🍂', '🌙'];
 function consumeCrops(n) { let left = n; for (const id of CROP_ORDER) { const t = Math.min(left, inv[id] || 0); inv[id] = (inv[id] || 0) - t; left -= t; if (left <= 0) break; } }
@@ -138,6 +142,7 @@ function freshState() {
   player2 = { name: 'Nick', sprite: 'player2', x: 18 * TILE, y: 16 * TILE, dir: 'down', flip: false, speed: 1.4, moving: false, step: 0, mount: null, hist: [] };
   clock = 0; tod = 0.25;
   [['classic', 9, 13], ['classic', 12, 13], ['mallard', 7, 4], ['pekin', 26, 9], ['classic', 29, 10]].forEach(([b, x, y]) => spawnDuck(x, y, b));
+  spawnMount('penguin', 14, 15, 'frost');   // a wild penguin in the snow town — ride it to dive into the Glacier Depths
 }
 function spawnDuck(tx, ty, breed = 'classic') {
   ducks.push({ x: tx * TILE, y: ty * TILE, breed, flip: false, frame: 0, frameT: 0, vx: 0, vy: 0, think: 0, full: 60, lay: 6 + Math.random() * 6, mate: 8, age: Math.random() * 25 });
@@ -397,6 +402,9 @@ function placeP(p, tx, ty) { p.x = tx * TILE; p.y = ty * TILE; if (solidAt(p.x +
 function warpTo(name, tx, ty) {
   if (fishing) { fishing = null; if (state === 'fishing') state = 'play'; }   // never carry a cast line into a new area
   current = name; area = getArea(name);
+  for (const g of (area.gates || [])) if (g.kind === 'boulder' && g.locked) {   // reset the puzzle on entry — never softlock a mis-pushed boulder
+    const b = (area.boulders || []).find((x) => x.gateId === g.id); if (b) { b.x = g.boulder[0]; b.y = g.boulder[1]; b.cd = 0; }
+  }
   const ent = area.entrance || [Math.floor(area.w / 2), Math.floor(area.h / 2)];
   const bx = (tx ?? ent[0]), by = (ty ?? ent[1]);
   placeP(player, bx, by);

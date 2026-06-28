@@ -272,7 +272,7 @@ export const AREA_DEFS = {
     ],
     npcs: [npc('Frostbite', 16, 18, P.snow, ['Snowball fight? No? Suit yourself, Haley!', 'There\'s a sparkly city deep under the ice.'], true)],
     decor: [{ art: 'snowman', tx: 9, ty: 16 }, { art: 'snowman', tx: 22, ty: 17 }, { art: 'snowtree', tx: 4, ty: 6, h: 1 }, { art: 'snowtree', tx: 27, ty: 7, h: 1 }, { art: 'signpost', tx: 16, ty: 20, solid: false }],
-    links: [{ x: 16, y: 15, to: 'glacier', tx: 16, ty: 3, walk: 'snow' }],
+    links: [{ x: 16, y: 15, to: 'glacier', tx: 16, ty: 3, walk: 'water' }],   // a hole in the ice — only a penguin can dive in
   },
 
   // ---- BUBBLETOWN (underwater city) ----
