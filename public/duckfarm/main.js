@@ -70,6 +70,10 @@ const GATES = {
     id: 'dive_bubble', kind: 'mount', tile: [17, 22], need: 'penguin',
     hintAt: [17, 21], hint: '🐧 Buy a penguin in town to dive here',
   }],
+  cave: [{   // push a boulder onto the glowing stone to open the way south
+    id: 'boulder_pinnacle', kind: 'boulder', barrier: [[13, 22], [14, 22]], restore: 'cavefloor',
+    boulder: [15, 20], target: [11, 20], hintAt: [13, 21], hint: '🪨 Roll the boulder onto the glowing stone',
+  }],
 };
 const RUNES = ['🐟', '🌸', '🥚', '⭐', '🍂', '🌙'];
 function consumeCrops(n) { let left = n; for (const id of CROP_ORDER) { const t = Math.min(left, inv[id] || 0); inv[id] = (inv[id] || 0) - t; left -= t; if (left <= 0) break; } }
@@ -102,6 +106,7 @@ function prepArea(a) {
       for (const [x, y] of g.barrier) a.map[y][x] = 'fence';   // close it off (fence is solid)
       if (g.kind === 'toll') a.npcs.push({ name: g.keeper.name, tx: g.keeper.tx, ty: g.keeper.ty, dir: 'down', pal: g.keeper.pal, lines: g.keeper.lines, action: 'toll', gateId: g.id });
       if (g.kind === 'rune') a.npcs.push({ name: g.keeper.name, tx: g.keeper.tx, ty: g.keeper.ty, dir: 'down', pal: g.keeper.pal, lines: [], action: 'rune', gateId: g.id });
+      if (g.kind === 'boulder') { (a.boulders = a.boulders || []).push({ x: g.boulder[0], y: g.boulder[1], cd: 0, gateId: g.id, target: g.target }); }
     }
   }
   for (const n of a.npcs) { n.frames = personFrames(n.pal); n.x = n.tx * TILE; n.y = n.ty * TILE; n.home = { x: n.x, y: n.y }; n.frame = 0; n.flip = false; n.vx = 0; n.vy = 0; n.think = Math.random() * 60; }
@@ -114,6 +119,7 @@ function checkGates() {   // co-op lever gates open when both plates are covered
     for (const [px, py] of g.plates) if (bothPlayers().some((p) => Math.floor((p.x + 8) / TILE) === px && Math.floor((p.y + 8) / TILE) === py)) covered++;
     if (covered >= g.plates.length) { unlockGate(g.id); say('⛓️ The gate grinds open!'); }
   }
+  checkBoulderGates();
 }
 function getArea(id) { if (!areaCache[id]) areaCache[id] = prepArea(rawArea(id)); return areaCache[id]; }
 
@@ -265,11 +271,26 @@ function paintAt(e) {
 }
 
 // ---------- collision ----------
+const boulderAt = (tx, ty) => !!(area.boulders && area.boulders.some((b) => b.x === tx && b.y === ty));
 function solidAt(px, py) {
   const tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
   if (tx < 0 || ty < 0 || tx >= area.w || ty >= area.h) return true;
   if (area.blocked.has(tx + ',' + ty)) return true;
+  if (boulderAt(tx, ty)) return true;
   return SOLID.has(area.map[ty][tx]);
+}
+function boulderBlocked(tx, ty, self) {
+  if (tx < 0 || ty < 0 || tx >= area.w || ty >= area.h) return true;
+  if (area.blocked.has(tx + ',' + ty)) return true;
+  if (SOLID.has(area.map[ty][tx])) return true;
+  return (area.boulders || []).some((b) => b !== self && b.x === tx && b.y === ty);
+}
+function checkBoulderGates() {
+  for (const g of (area.gates || [])) {
+    if (g.kind !== 'boulder' || !g.locked) continue;
+    const b = (area.boulders || []).find((x) => x.gateId === g.id);
+    if (b && b.x === g.target[0] && b.y === g.target[1]) { unlockGate(g.id); say('🪨 The boulder clicks into place — the way opens!'); }
+  }
 }
 function canMove(nx, ny) { const p = 2, w = TILE - 4, h = TILE - 4; return !(solidAt(nx + p, ny + p) || solidAt(nx + p + w, ny + p) || solidAt(nx + p, ny + p + h) || solidAt(nx + p + w, ny + p + h)); }
 // nearest on-foot-walkable tile (spiral search) — un-sticks the player after a water dismount
@@ -289,6 +310,7 @@ function solidForMount(px, py, kind) {
   const tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
   if (tx < 0 || ty < 0 || tx >= area.w || ty >= area.h) return true;
   if (area.blocked.has(tx + ',' + ty)) return true;           // buildings/props always block
+  if (boulderAt(tx, ty)) return true;                          // boulders block mounts too
   const t = area.map[ty][tx];
   if (!SOLID.has(t)) return false;
   if (kind === 'pelican') return false;                       // fly over everything natural
@@ -529,6 +551,15 @@ function updateOne(p, dt) {
   const kind = p.mount?.kind, speed = kind ? MOUNT_SPEED[kind] : p.speed;
   const stuck = !kind && solidAt(p.x + 8, p.y + 8);
   const ok = (nx, ny) => kind ? canRide(nx, ny, kind) : (stuck || canMove(nx, ny));   // no leash — camera zooms to keep both in view
+  // push a boulder you walk into (on foot, one tile at a time)
+  if (p.moving && !kind && area.boulders && area.boulders.length) {
+    const ddx = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0, ddy = ddx ? 0 : Math.sign(dy);
+    const pcx = Math.floor((p.x + 8) / TILE), pcy = Math.floor((p.y + 8) / TILE);
+    const b = area.boulders.find((bl) => bl.x === pcx + ddx && bl.y === pcy + ddy);
+    if (b && b.cd <= 0 && !boulderBlocked(b.x + ddx, b.y + ddy, b)) {
+      b.x += ddx; b.y += ddy; b.cd = 0.16; p.x = pcx * TILE; p.y = pcy * TILE; sfx.plant(); checkBoulderGates();
+    }
+  }
   if (p.moving) {
     const len = Math.hypot(dx, dy) || 1, sx = (dx / len) * speed, sy = (dy / len) * speed;
     if (ok(p.x + sx, p.y)) p.x += sx; if (ok(p.x, p.y + sy)) p.y += sy;
@@ -638,10 +669,9 @@ function fitView(dt) {
 }
 function shadow(x, y, rx = 5) { ctx.save(); ctx.fillStyle = 'rgba(20,16,30,0.22)'; ctx.beginPath(); ctx.ellipse(Math.round(x - camX + 8), Math.round(y - camY + 14), rx, rx * 0.42, 0, 0, 7); ctx.fill(); ctx.restore(); }
 function blit(img, x, y, flip = false) { const sx = Math.round(x - camX), sy = Math.round(y - camY); if (flip) { ctx.save(); ctx.translate(sx + TILE, sy); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0); ctx.restore(); } else ctx.drawImage(img, sx, sy); }
-function drawGates() {   // co-op pressure plates (world space)
+function drawGates() {   // co-op pressure plates, boulder targets + boulders (world space)
   for (const g of (area.gates || [])) {
-    if (!g.locked || g.kind !== 'levers') continue;
-    for (const [px, py] of g.plates) {
+    if (g.locked && g.kind === 'levers') for (const [px, py] of g.plates) {
       const occ = bothPlayers().some((p) => Math.floor((p.x + 8) / TILE) === px && Math.floor((p.y + 8) / TILE) === py);
       const x = Math.round(px * TILE - camX), y = Math.round(py * TILE - camY);
       ctx.fillStyle = occ ? 'rgba(120,230,150,0.9)' : 'rgba(150,150,170,0.65)';
@@ -649,7 +679,14 @@ function drawGates() {   // co-op pressure plates (world space)
       ctx.fillStyle = occ ? '#eaffd0' : '#c8ccd8'; ctx.fillRect(x + 4, y + 4, 8, 8);
       ctx.fillStyle = occ ? '#3f9e54' : '#7a808f'; ctx.fillRect(x + 6, y + 6, 4, 4);
     }
+    if (g.locked && g.kind === 'boulder') {   // glowing target stone
+      const x = Math.round(g.target[0] * TILE - camX), y = Math.round(g.target[1] * TILE - camY);
+      const pulse = 0.5 + 0.3 * Math.sin(clock * 3);
+      ctx.fillStyle = `rgba(255,224,120,${pulse * 0.4})`; ctx.fillRect(x + 2, y + 2, 12, 12);
+      ctx.strokeStyle = `rgba(255,224,120,${pulse})`; ctx.lineWidth = 1.5; ctx.strokeRect(x + 2.5, y + 2.5, 11, 11);
+    }
   }
+  for (const b of (area.boulders || [])) { const img = art.props.rock; if (img) ctx.drawImage(img, Math.round(b.x * TILE - camX), Math.round((b.y + 1) * TILE - img.height - camY)); }
 }
 function drawCharacter(p) {
   const set = art[p.sprite] || art.player;
@@ -890,6 +927,7 @@ function loop(now) {
   if (state === 'map') { draw(); ctx.save(); ctx.scale(uiScale, uiScale); drawMap(); ctx.restore(); requestAnimationFrame(loop); return; }
   if (state === 'play') { clock += dt; tod = (tod + dt / DAY_LEN) % 1; if (toastT > 0) toastT -= dt; if (warpCooldown > 0) warpCooldown -= dt;
     if ((weatherT -= dt) <= 0) { const s = seasonFor(clock); weather = s === 'winter' ? (Math.random() < 0.6 ? 'snow' : 'clear') : (Math.random() < 0.3 ? 'rain' : 'clear'); weatherT = 28 + Math.random() * 34; }
+    if (area.boulders) for (const b of area.boulders) if (b.cd > 0) b.cd -= dt;
     updatePlayers(dt); updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); checkGates(); checkQuests(); fitView(dt); }
   else if (state === 'modal' || state === 'dialogue' || state === 'fishing') {
     // co-op: the player who ISN'T in a menu keeps wandering (warps are play-only, so the area can't swap underneath the busy one)
