@@ -259,18 +259,20 @@ export const AREA_DEFS = {
     bld('dojo', 'house', 'Mountain Dojo', 'pagoda', 18, 6, 4, 3, { name: 'Master Quack', pal: P.purple, lines: ['A true farmer trains body AND duck. Hwah!', 'Discipline, patience, and plenty of feed — that\'s the way.'] })],
     npcs: [npc('Pebble', 13, 16, P.grey, ['The air\'s thin up here, but the view is something else.', 'Frostfall, to the east, is the coolest town around. Literally.'], true)],
     decor: [{ art: 'rock', tx: 4, ty: 6 }, { art: 'rock', tx: 26, ty: 8 }, { art: 'rock', tx: 8, ty: 18 }, { art: 'tree', tx: 23, ty: 17 }, { art: 'signpost', tx: 15, ty: 18, solid: false }],
+    // frozen bridge to Frostfall: an ice lane (you slide, can't stop) flanked by chasm
+    custom: ({ set }) => { for (let x = 22; x <= 28; x++) { set(x, 12, 'ice'); set(x, 11, 'water'); set(x, 13, 'water'); } set(21, 12, 'path'); },
   },
 
   // ---- FROSTFALL (snow town — club-penguin vibes) ----
   frost: {
-    name: 'Frostfall', biome: 'snow', w: 32, h: 26, exits: { west: 'pinnacle' }, plaza: [12, 12, 9, 7], plazaTile: 'ice',
+    name: 'Frostfall', biome: 'snow', w: 32, h: 26, exits: { west: 'pinnacle' }, plaza: [12, 12, 9, 7], plazaTile: 'snow',
     buildings: [
       bld('icecream', 'cafe', 'Frosty Treats', 'cafe', 5, 8, 3, 2, { name: 'Sherbet', pal: P.snow, lines: ['Cold treats for cold days! A Duck Treat warms their hearts.', 'Brrr — keep moving and you\'ll stay toasty.'] }),
       bld('igloo', 'house', 'The Big Igloo', 'housePurple', 24, 8, 3, 2, { name: 'Waddles', pal: P.blue, lines: ['Welcome to my igloo! Penguins are the best swimmers, you know.', 'Dive through the ice hole to reach Glacier Depths!'] }),
     ],
     npcs: [npc('Frostbite', 16, 18, P.snow, ['Snowball fight? No? Suit yourself, Haley!', 'There\'s a sparkly city deep under the ice.'], true)],
     decor: [{ art: 'snowman', tx: 9, ty: 16 }, { art: 'snowman', tx: 22, ty: 17 }, { art: 'snowtree', tx: 4, ty: 6, h: 1 }, { art: 'snowtree', tx: 27, ty: 7, h: 1 }, { art: 'signpost', tx: 16, ty: 20, solid: false }],
-    links: [{ x: 16, y: 15, to: 'glacier', tx: 16, ty: 3, walk: 'ice' }],
+    links: [{ x: 16, y: 15, to: 'glacier', tx: 16, ty: 3, walk: 'snow' }],
   },
 
   // ---- BUBBLETOWN (underwater city) ----

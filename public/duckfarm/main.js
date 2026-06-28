@@ -74,6 +74,9 @@ const GATES = {
     id: 'boulder_pinnacle', kind: 'boulder', barrier: [[13, 22], [14, 22]], restore: 'cavefloor',
     boulder: [15, 20], target: [11, 20], hintAt: [13, 21], hint: '🪨 Roll the boulder onto the glowing stone',
   }],
+  pinnacle: [{   // hint only — the ice lane itself is the challenge (slide-until-wall, see updateOne)
+    id: 'ice_frost', kind: 'ice', hintAt: [24, 11], hint: '❄️ Glide the ice bridge to Frostfall',
+  }],
 };
 const RUNES = ['🐟', '🌸', '🥚', '⭐', '🍂', '🌙'];
 function consumeCrops(n) { let left = n; for (const id of CROP_ORDER) { const t = Math.min(left, inv[id] || 0); inv[id] = (inv[id] || 0) - t; left -= t; if (left <= 0) break; } }
@@ -284,6 +287,18 @@ function boulderBlocked(tx, ty, self) {
   if (area.blocked.has(tx + ',' + ty)) return true;
   if (SOLID.has(area.map[ty][tx])) return true;
   return (area.boulders || []).some((b) => b !== self && b.x === tx && b.y === ty);
+}
+// where a slide from (cx,cy) heading (dx,dy) comes to rest: glide over ice, stop at a wall or on the first solid ground
+function slideDest(cx, cy, dx, dy) {
+  let x = cx, y = cy, guard = 0;
+  while (guard++ < 64) {
+    const nx = x + dx, ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= area.w || ny >= area.h) break;
+    if (area.blocked.has(nx + ',' + ny) || SOLID.has(area.map[ny][nx]) || boulderAt(nx, ny)) break;
+    x = nx; y = ny;
+    if (area.map[y][x] !== 'ice') break;   // slid off the ice onto firm ground
+  }
+  return [x, y];
 }
 function checkBoulderGates() {
   for (const g of (area.gates || [])) {
@@ -549,6 +564,29 @@ function updateOne(p, dt) {
   if (dx) { p.dir = 'side'; p.flip = dx < 0; } else if (dy < 0) p.dir = 'up'; else if (dy > 0) p.dir = 'down';
   p.moving = dx !== 0 || dy !== 0;
   const kind = p.mount?.kind, speed = kind ? MOUNT_SPEED[kind] : p.speed;
+  // ICE SLIDE (on foot): step onto ice → glide in that direction until you hit a wall or solid ground
+  if (!kind) {
+    const cx = Math.floor((p.x + 8) / TILE), cy = Math.floor((p.y + 8) / TILE);
+    if (!p.slide && area.map[cy] && area.map[cy][cx] === 'ice' && (dx || dy)) {
+      const sdx = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0, sdy = sdx ? 0 : Math.sign(dy);
+      const [tx, ty] = slideDest(cx, cy, sdx, sdy);
+      if (tx !== cx || ty !== cy) { p.slide = { dx: sdx, dy: sdy, tx, ty }; p.x = cx * TILE; p.y = cy * TILE; }
+    }
+    if (p.slide) {
+      const sp = 3.2, tX = p.slide.tx * TILE, tY = p.slide.ty * TILE;
+      if (p.slide.dx) { p.dir = 'side'; p.flip = p.slide.dx < 0; } else if (p.slide.dy < 0) p.dir = 'up'; else p.dir = 'down';
+      p.moving = true; p.step += 0.3;
+      p.x += Math.sign(tX - p.x) * Math.min(sp, Math.abs(tX - p.x));
+      p.y += Math.sign(tY - p.y) * Math.min(sp, Math.abs(tY - p.y));
+      if (p === player) { p.hist.unshift({ x: p.x, y: p.y }); if (p.hist.length > MAX_FOLLOWERS * FOLLOW_GAP + 4) p.hist.length = MAX_FOLLOWERS * FOLLOW_GAP + 4; }
+      if (Math.abs(p.x - tX) < 1 && Math.abs(p.y - tY) < 1) {   // arrived
+        p.x = tX; p.y = tY; const lt = [p.slide.tx, p.slide.ty]; p.slide = null;
+        const wrp = area.warps.find((w) => w.x === lt[0] && w.y === lt[1]);
+        if (wrp && state === 'play' && warpCooldown <= 0) warpTo(wrp.to, wrp.tx, wrp.ty); else p.onWarp = false;
+      }
+      return;   // the slide fully controls this frame
+    }
+  }
   const stuck = !kind && solidAt(p.x + 8, p.y + 8);
   const ok = (nx, ny) => kind ? canRide(nx, ny, kind) : (stuck || canMove(nx, ny));   // no leash — camera zooms to keep both in view
   // push a boulder you walk into (on foot, one tile at a time)
