@@ -136,6 +136,8 @@
       function broadcast() {
         let p1id = null, p2id = null; for (const id in idToIdx) { if (idToIdx[id] === 0) p1id = +id; else if (idToIdx[id] === 1) p2id = +id; }
         socket.emit('host:state', { game: 'duckfarm', started, p1id, p2id, ctrl: (ready && window.__DF) ? window.__DF.snapshot() : null });
+        // route any queued private message (e.g. the Rune Lock code) to just one phone
+        if (ready && window.__DF && window.__DF.takePriv) { const m = window.__DF.takePriv(); if (m) { const id = m.idx === 0 ? p1id : p2id; if (id != null) socket.emit('host:to', { id, payload: m.payload }); } }
       }
       setInterval(broadcast, 200);   // frequent enough for pop-up menus to reach the phones promptly
     })();

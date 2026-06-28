@@ -562,6 +562,11 @@
   #dfModalBtns button{ text-align:left; padding:16px; font-size:16px; background:#25323e; color:#fff; border:1px solid #3a4b5a; border-radius:12px; }
   #dfModalBtns button:disabled{ opacity:.4; }
   #dfModalClose{ margin-top:8px; padding:15px; border-radius:12px; background:#3a2f44; color:#fff; border:none; font-size:16px; }
+  #dfRune{ display:none; position:fixed; inset:0; background:rgba(20,12,30,.96); z-index:60; flex-direction:column; justify-content:center; align-items:center; padding:24px; gap:14px; text-align:center; }
+  #dfRune .t{ font-size:22px; font-weight:800; color:#e7d6ff; }
+  #dfRune .code{ font-size:52px; letter-spacing:8px; }
+  #dfRune .s{ font-size:15px; color:#c9b9e0; max-width:320px; }
+  #dfRuneClose{ margin-top:10px; padding:15px 28px; border-radius:12px; background:#5d3f8f; color:#fff; border:none; font-size:16px; }
 </style>
 <section id="dfgame" class="screen">
   <div id="dfStickZone">
@@ -588,6 +593,12 @@
     <div class="s" id="dfModalSub"></div>
     <div id="dfModalBtns"></div>
     <button id="dfModalClose">✕ Close</button>
+  </div>
+  <div id="dfRune">
+    <div class="t">🔑 The runes read…</div>
+    <div id="dfRuneCode" class="code"></div>
+    <div class="s">Read these to your partner — they turn the dials on the TV.</div>
+    <button id="dfRuneClose">Got it ✓</button>
   </div>
 </section>
 
@@ -875,9 +886,18 @@
   let pPriv = null;        // the ghost's private tactical map (server sends this only to the ghost's phone)
   let pLastVibe = 0;
   socket.on('ctrl:priv', (d) => {
+    if (d && d.rune) { showRune(d.rune); return; }   // Duck Farm: only YOUR phone sees the rune code
     if (lastState && lastState.game === 'beacon') { bPriv = d; drawBradar(); }
     else { pPriv = d; drawPmap(); }
   });
+  let runeTimer = null;
+  function showRune(code) {
+    const el = document.getElementById('dfRune'); if (!el) return;
+    document.getElementById('dfRuneCode').textContent = Array.isArray(code) ? code.join('  ') : code;
+    el.style.display = 'flex';
+    clearTimeout(runeTimer); runeTimer = setTimeout(() => { el.style.display = 'none'; }, 45000);
+  }
+  document.getElementById('dfRuneClose').addEventListener('pointerdown', (e) => { e.preventDefault(); document.getElementById('dfRune').style.display = 'none'; });
 
   // Ghost: analog joystick → normalized move vector.
   (function setupStick(){

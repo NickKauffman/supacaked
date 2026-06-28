@@ -59,8 +59,19 @@ const GATES = {
     plates: [[9, 16], [28, 16]],
     hintAt: [18, 27], hint: '⛓️ Gate barred — stand on BOTH stone tiles at once',
   }],
+  meadow: [{
+    id: 'rune_sunny', kind: 'rune',
+    barrier: [[28, 10], [28, 11]], restore: 'path',   // the east sluice gate
+    keeper: { tx: 26, ty: 11, name: 'Rune Keeper',
+      pal: { hair: '#3a2f44', shirt: '#9a5fc4', shirtL: '#caa0e0', shirtD: '#71409e', hat: '#5d3f8f', hatL: '#8a63b8', hatD: '#42286a' } },
+    hintAt: [28, 12], hint: '🔐 Sluice locked — read the runes',
+  }],
 };
+const RUNES = ['🐟', '🌸', '🥚', '⭐', '🍂', '🌙'];
 function consumeCrops(n) { let left = n; for (const id of CROP_ORDER) { const t = Math.min(left, inv[id] || 0); inv[id] = (inv[id] || 0) - t; left -= t; if (left <= 0) break; } }
+// private message to ONE phone (the relay reads this and routes it via host:to -> ctrl:priv)
+let pendingPriv = null;
+function queuePriv(playerIdx, payload) { pendingPriv = { idx: playerIdx, payload }; }
 function unlockGate(id) {
   if (unlockedGates.has(id)) return;
   unlockedGates.add(id);
@@ -86,6 +97,7 @@ function prepArea(a) {
       gg._orig = g.barrier.map(([x, y]) => [x, y, a.map[y][x]]);
       for (const [x, y] of g.barrier) a.map[y][x] = 'fence';   // close it off (fence is solid)
       if (g.kind === 'toll') a.npcs.push({ name: g.keeper.name, tx: g.keeper.tx, ty: g.keeper.ty, dir: 'down', pal: g.keeper.pal, lines: g.keeper.lines, action: 'toll', gateId: g.id });
+      if (g.kind === 'rune') a.npcs.push({ name: g.keeper.name, tx: g.keeper.tx, ty: g.keeper.ty, dir: 'down', pal: g.keeper.pal, lines: [], action: 'rune', gateId: g.id });
     }
   }
   for (const n of a.npcs) { n.frames = personFrames(n.pal); n.x = n.tx * TILE; n.y = n.ty * TILE; n.home = { x: n.x, y: n.y }; n.frame = 0; n.flip = false; n.vx = 0; n.vy = 0; n.think = Math.random() * 60; }
@@ -408,6 +420,13 @@ function openModal(title, sub, buttons) {
   for (const bt of buttons) { const el = document.createElement('button'); el.textContent = bt.label; el.disabled = !!bt.disabled; if (!bt.disabled) el.onclick = () => { bt.onClick(); }; box.appendChild(el); }
   $('modal').style.display = 'flex';
 }
+function openRuneModal(g) {
+  const cur = g.dials.map((d) => RUNES[d]).join('  ');
+  openModal('🔒 The Rune Lock', `Match the four runes to the secret.<br><span style="font-size:24px;letter-spacing:4px">${cur}</span><br><i style="font-size:12px">Ask your partner — the code is on their phone.</i>`, [
+    ...g.dials.map((d, i) => ({ label: `Rune ${i + 1}:  ${RUNES[d]}   ▶ turn`, onClick: () => { g.dials[i] = (g.dials[i] + 1) % RUNES.length; sfx.talk(); openRuneModal(g); } })),
+    { label: '🔓 Try the runes', onClick: () => { if (g.dials.every((d, i) => d === g.code[i])) { closeModal(); unlockGate(g.id); say('🔓 The runes align — the sluice opens!'); } else { sfx.nope(); say('The runes dim… not quite.'); openRuneModal(g); } } },
+  ]);
+}
 // phone picks a modal option (or closes) — drives the TV's modal buttons
 function dfMenu(payload) {
   if (state !== 'modal') return;
@@ -437,6 +456,15 @@ const BUILDING_ACTIONS = {
     if (have >= k.crops) { consumeCrops(k.crops); unlockGate(g.id); openDialogue(npc.name, [k.paid]); }
     else if (coins >= k.coins) { coins -= k.coins; unlockGate(g.id); sfx.coin(); openDialogue(npc.name, [k.paid]); }
     else openDialogue(npc.name, [`${k.crops} harvested crops or ${k.coins} coins, and the bridge is yours. You have ${have} crops and ${coins} coins.`]);
+  },
+  rune: (npc) => {   // phone-secret: the code is shown only on the partner's phone; you turn the dials on the TV
+    const g = (area.gates || []).find((x) => x.id === npc.gateId);
+    if (!g || !g.locked) { openDialogue(npc.name, ['The runes glow softly — the way is open.']); return; }
+    if (!g.code) g.code = Array.from({ length: 4 }, () => (Math.random() * RUNES.length) | 0);
+    if (!g.dials) g.dials = [0, 0, 0, 0];
+    const ownerIdx = actingPlayer === player2 ? 1 : 0;
+    queuePriv(1 - ownerIdx, { rune: g.code.map((i) => RUNES[i]) });   // partner sees the answer
+    openRuneModal(g);
   },
   barnshop: (src) => openModal(`🛖 ${src?.shopTitle || 'The Barn'}`, `You have <b>${coins}</b> 🪙${festivalDay() ? ' — <i>festival +25%!</i>' : ''}`, [
     { label: `Sell ${eggs} eggs  →  +${Math.round(eggs * EGG_PRICE * fMult())} 🪙`, disabled: !eggs, onClick: () => { doSellEggs(EGG_PRICE); BUILDING_ACTIONS.barnshop(src); } },
@@ -947,6 +975,7 @@ window.__DF = {
   spawnMount, spawnDuck, toggleRide, toggleWalk, startFishing, hookFish, touchDir,
   ctrl: ctrlInput, primaryAction, hasSave, dfMenu, enableAudio, snapshot: controllerSnapshot, get state() { return state; },
   tick: (n) => loop(n || performance.now()),   // debug: force one frame (loop is rAF-throttled in bg tabs)
+  takePriv: () => { const m = pendingPriv; pendingPriv = null; return m; },   // relay pulls queued private messages
   get audioOn() { return !!actx && actx.state === 'running'; },
   setCoins: (v) => { coins = v; }, setEggs: (v) => { eggs = v; }, setInv: (o) => { inv = o; }, setLevel: (v) => { level = v; },
   set tod(v) { tod = v; }, get tod() { return tod; }, set clock(v) { clock = v; }, get clock() { return clock; },
