@@ -66,6 +66,10 @@ const GATES = {
       pal: { hair: '#3a2f44', shirt: '#9a5fc4', shirtL: '#caa0e0', shirtD: '#71409e', hat: '#5d3f8f', hatL: '#8a63b8', hatD: '#42286a' } },
     hintAt: [28, 12], hint: '🔐 Sluice locked — read the runes',
   }],
+  sunny: [{   // soft gate: the dive only works on a penguin (no barrier, a per-pass requirement)
+    id: 'dive_bubble', kind: 'mount', tile: [17, 22], need: 'penguin',
+    hintAt: [17, 21], hint: '🐧 Buy a penguin in town to dive here',
+  }],
 };
 const RUNES = ['🐟', '🌸', '🥚', '⭐', '🍂', '🌙'];
 function consumeCrops(n) { let left = n; for (const id of CROP_ORDER) { const t = Math.min(left, inv[id] || 0); inv[id] = (inv[id] || 0) - t; left -= t; if (left <= 0) break; } }
@@ -93,7 +97,7 @@ function prepArea(a) {
   for (const g of (GATES[a.name] || [])) {
     const locked = !unlockedGates.has(g.id), gg = { ...g, locked };
     a.gates.push(gg);
-    if (locked) {
+    if (locked && g.barrier) {
       gg._orig = g.barrier.map(([x, y]) => [x, y, a.map[y][x]]);
       for (const [x, y] of g.barrier) a.map[y][x] = 'fence';   // close it off (fence is solid)
       if (g.kind === 'toll') a.npcs.push({ name: g.keeper.name, tx: g.keeper.tx, ty: g.keeper.ty, dir: 'down', pal: g.keeper.pal, lines: g.keeper.lines, action: 'toll', gateId: g.id });
@@ -346,6 +350,8 @@ function checkWarp() {
     const wrp = area.warps.find((w) => w.x === tx && w.y === ty);
     if (!wrp) { p.onWarp = false; continue; }
     if (p.onWarp) continue;            // already standing on it (e.g. just arrived) — wait until they leave
+    const mg = (area.gates || []).find((x) => x.kind === 'mount' && x.tile[0] === tx && x.tile[1] === ty);
+    if (mg && (!p.mount || p.mount.kind !== mg.need)) { p.onWarp = true; if (state === 'play') say(mg.hint); continue; }   // need the right mount to pass
     p.onWarp = true;                   // mark on-warp even mid-menu so closing a menu can't auto-trigger it
     if (state === 'play') { warpTo(wrp.to, wrp.tx, wrp.ty); return; }   // but only actually travel during play
   }
@@ -829,7 +835,13 @@ setInterval(() => { if (actx && !muted && state !== 'title') playBar(); }, 2400)
 function drawLabels() {
   for (const b of area.buildings) { const img = resolveBuilding(b.art); if (!img) continue; const cx = sx((b.tx + b.w / 2) * TILE); const topY = sy((b.ty + b.h) * TILE - img.height) - 11; if (cx > -40 && cx < UW + 40 && topY > -12) label(b.name, cx, topY, '#ffe9b0'); }
   for (const n of area.npcs) { const d2 = (n.x - player.x) ** 2 + (n.y - player.y) ** 2; if (d2 < 40 * 40) label(n.name, sx(n.x + 8), sy(n.y) - 12, '#cfe6ff'); }
-  for (const g of (area.gates || [])) if (g.locked && g.hint) { const [bx, by] = g.hintAt || g.barrier[0]; const cx = sx(bx * TILE + 8), cy = sy(by * TILE) - 12; if (cx > -80 && cx < UW + 80 && cy > -12) label(g.hint, cx, cy, '#ffd24a'); }
+  for (const g of (area.gates || [])) {
+    if (g.kind === 'mount') { if (bothPlayers().some((p) => p.mount && p.mount.kind === g.need)) continue; }   // have the mount → no hint
+    else if (!g.locked) continue;
+    if (!g.hint) continue;
+    const [bx, by] = g.hintAt || g.barrier[0]; const cx = sx(bx * TILE + 8), cy = sy(by * TILE) - 12;
+    if (cx > -80 && cx < UW + 80 && cy > -12) label(g.hint, cx, cy, '#ffd24a');
+  }
   // interaction prompt
   const b = nearestBuilding(), n = !b && nearestNPC();
   if ((b || n) && state === 'play') { ctx.font = '8px monospace'; ctx.textAlign = 'center'; const tx = 'SPACE'; const w = ctx.measureText(tx).width + 10; ctx.fillStyle = 'rgba(40,30,50,0.85)'; ctx.fillRect(UW / 2 - w / 2, 18, w, 12); ctx.fillStyle = '#ffe25a'; ctx.textBaseline = 'middle'; ctx.fillText(tx, UW / 2, 24); ctx.textAlign = 'left'; }
