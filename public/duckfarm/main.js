@@ -245,6 +245,7 @@ addEventListener('keydown', (e) => {
   if (state === 'fishing') { if (k === ' ' || k === 'enter') { e.preventDefault(); hookFish(); } else if (k === 'escape') { fishing = null; state = 'play'; } return; }
   if (state === 'map') { if (k === 'm' || k === 'escape') state = 'play'; return; }
   if (k === 'm' && !e.repeat) { state = 'map'; return; }
+  if ((k === 'p' || k === 'escape') && !e.repeat) { actingPlayer = player; pauseMenu(); return; }
   if (k === 'b' && current === 'farm') buildMode = !buildMode;
   if (e.key >= '1' && e.key <= '7' && buildMode) buildIdx = +e.key - 1;
   if (k === 'q' && buildMode) buildIdx = (buildIdx + BUILD_TILES.length - 1) % BUILD_TILES.length;
@@ -492,6 +493,17 @@ function controllerSnapshot() {
   return { modal, dialogue: state === 'dialogue' ? { name: $('dlgName').textContent, text: $('dlgText').textContent } : null, map: state === 'map' };
 }
 function closeModal() { $('modal').style.display = 'none'; state = 'play'; }
+function pauseMenu(confirmNew) {   // save / start-over / resume — reachable from a phone (☰) or P/Esc on the TV
+  openModal('⏸️ Menu', `🪙 ${coins} · 📍 ${areaTitle(current)}${confirmNew ? '<br><b>Erase ALL progress and start a brand-new game?</b>' : ''}`,
+    confirmNew ? [
+      { label: '⚠️ Yes — start over', onClick: () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} freshState(); closeModal(); say('🆕 A fresh start!'); } },
+      { label: '↩ No — keep playing', onClick: () => pauseMenu(false) },
+    ] : [
+      { label: '💾 Save game', onClick: () => { save(); sfx.coin(); say('💾 Game saved!'); closeModal(); } },
+      { label: '🆕 New game…', onClick: () => pauseMenu(true) },
+      { label: '▶ Resume', onClick: () => closeModal() },
+    ]);
+}
 const cropCount = () => CROP_ORDER.reduce((s, id) => s + (inv[id] || 0), 0);
 const cropValue = (mult = 1) => Math.floor(CROP_ORDER.reduce((s, id) => s + (inv[id] || 0) * CROPS[id].sell, 0) * mult);
 const fMult = () => festivalDay() ? 1.25 : 1;
@@ -1018,6 +1030,7 @@ function ctrlInput(idx, type, payload) {
     else if (m === 'flock') toggleWalk();
     else if (m === 'map') state = state === 'map' ? 'play' : (state === 'play' ? 'map' : state);
     else if (m === 'music') muted = !muted;
+    else if (m === 'menu') { actingPlayer = p; pauseMenu(); }
   }
 }
 canvas.addEventListener('pointerdown', (e) => {
