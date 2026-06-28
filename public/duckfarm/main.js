@@ -11,6 +11,10 @@ const SAVE_KEY = 'duckfarm.save.v3';
 const DAY_LEN = 150, EGG_PRICE = 5, DUCK_PRICE = 20;
 const EMPORIUM = { classic: 15, pekin: 22, mallard: 26, slate: 40, rosy: 70 };
 const MOUNT_SPEED = { pelican: 3.0, ostrich: 2.6, penguin: 1.7 };
+// grid movement: px/sec for a 16px tile step (≈0.22s/tile on foot — a touch slower & more deliberate than the old free walk)
+const STEP_PXPS = 74;
+const MOUNT_STEP = { pelican: 150, ostrich: 170, penguin: 115 };
+const SLIDE_PXPS = 200;   // ice glide is quick
 const RIDE_LIFT = { pelican: 5, ostrich: 10, penguin: 4 };
 const MOUNT_H = { pelican: 16, ostrich: 22, penguin: 16 };
 const MOUNT_PRICE = { ostrich: 60, penguin: 50 };
@@ -113,7 +117,7 @@ function prepArea(a) {
       for (const [x, y] of g.barrier) a.map[y][x] = 'fence';   // close it off (fence is solid)
       if (g.kind === 'toll') a.npcs.push({ name: g.keeper.name, tx: g.keeper.tx, ty: g.keeper.ty, dir: 'down', pal: g.keeper.pal, lines: g.keeper.lines, action: 'toll', gateId: g.id });
       if (g.kind === 'rune') a.npcs.push({ name: g.keeper.name, tx: g.keeper.tx, ty: g.keeper.ty, dir: 'down', pal: g.keeper.pal, lines: [], action: 'rune', gateId: g.id });
-      if (g.kind === 'boulder') { (a.boulders = a.boulders || []).push({ x: g.boulder[0], y: g.boulder[1], cd: 0, gateId: g.id, target: g.target }); }
+      if (g.kind === 'boulder') { (a.boulders = a.boulders || []).push({ x: g.boulder[0], y: g.boulder[1], bpx: g.boulder[0] * TILE, bpy: g.boulder[1] * TILE, gateId: g.id, target: g.target }); }
     }
   }
   for (const n of a.npcs) { n.frames = personFrames(n.pal); n.x = n.tx * TILE; n.y = n.ty * TILE; n.home = { x: n.x, y: n.y }; n.frame = 0; n.flip = false; n.vx = 0; n.vy = 0; n.think = Math.random() * 60; }
@@ -181,8 +185,9 @@ function load() {
   if (!stats.caught) stats.caught = 0; if (!stats.donated) stats.donated = 0; if (!stats.rode) stats.rode = 0;
   visitedAreas = new Set(s.visitedAreas && s.visitedAreas.length ? s.visitedAreas : ['farm']); visitedAreas.add(current);
   metNPCs = new Set(s.metNPCs || []);
-  player = { name: 'Haley', sprite: 'player', ...s.player, speed: 1.4, moving: false, step: 0, mount: null, hist: [] };
-  player2 = { name: 'Nick', sprite: 'player2', x: 18 * TILE, y: 16 * TILE, dir: 'down', flip: false, ...(s.player2 || {}), speed: 1.4, moving: false, step: 0, mount: null, hist: [] };
+  player = { name: 'Haley', sprite: 'player', ...s.player, speed: 1.4, moving: false, dest: null, sliding: null, step: 0, mount: null, hist: [] };
+  player2 = { name: 'Nick', sprite: 'player2', x: 18 * TILE, y: 16 * TILE, dir: 'down', flip: false, ...(s.player2 || {}), speed: 1.4, moving: false, dest: null, sliding: null, step: 0, mount: null, hist: [] };
+  for (const pp of [player, player2]) { pp.x = Math.round(pp.x / TILE) * TILE; pp.y = Math.round(pp.y / TILE) * TILE; }   // snap to grid (old free-move saves)
   walking = s.walking || false;
   ducks = s.ducks.map((d) => ({ ...d, frame: 0, frameT: 0, vx: 0, vy: 0, think: 0, lay: 4 + Math.random() * 8, mate: 8, age: d.age || 0 }));
   mounts = (s.mounts || []).map((m) => ({ ...m, flip: false, frame: 0, frameT: 0, vx: 0, vy: 0, think: Math.random() * 60, ridden: false }));
@@ -399,6 +404,7 @@ let warpCooldown = 0;
 function checkWarp() {
   if (warpCooldown > 0) return;
   for (const p of bothPlayers()) {
+    if (p.dest) continue;   // mid-step: only check when squarely on a tile
     const tx = Math.floor((p.x + TILE / 2) / TILE), ty = Math.floor((p.y + TILE / 2) / TILE);
     const wrp = area.warps.find((w) => w.x === tx && w.y === ty);
     if (!wrp) { p.onWarp = false; continue; }
@@ -409,12 +415,12 @@ function checkWarp() {
     if (state === 'play') { warpTo(wrp.to, wrp.tx, wrp.ty); return; }   // but only actually travel during play
   }
 }
-function placeP(p, tx, ty) { p.x = tx * TILE; p.y = ty * TILE; if (solidAt(p.x + 8, p.y + 8)) { const wlk = nearestWalkable(p.x, p.y); p.x = wlk.x; p.y = wlk.y; } p.moving = false; p.hist = []; if (p.mount) { p.mount.area = current; p.mount.x = p.x; p.mount.y = p.y; } }
+function placeP(p, tx, ty) { p.x = tx * TILE; p.y = ty * TILE; if (solidAt(p.x + 8, p.y + 8)) { const wlk = nearestWalkable(p.x, p.y); p.x = Math.round(wlk.x / TILE) * TILE; p.y = Math.round(wlk.y / TILE) * TILE; } p.moving = false; p.dest = null; p.sliding = null; p.hist = []; if (p.mount) { p.mount.area = current; p.mount.x = p.x; p.mount.y = p.y; } }
 function warpTo(name, tx, ty) {
   if (fishing) { fishing = null; if (state === 'fishing') state = 'play'; }   // never carry a cast line into a new area
   current = name; area = getArea(name);
   for (const g of (area.gates || [])) if (g.kind === 'boulder' && g.locked) {   // reset the puzzle on entry — never softlock a mis-pushed boulder
-    const b = (area.boulders || []).find((x) => x.gateId === g.id); if (b) { b.x = g.boulder[0]; b.y = g.boulder[1]; b.cd = 0; }
+    const b = (area.boulders || []).find((x) => x.gateId === g.id); if (b) { b.x = g.boulder[0]; b.y = g.boulder[1]; b.bpx = b.x * TILE; b.bpy = b.y * TILE; }
   }
   const ent = area.entrance || [Math.floor(area.w / 2), Math.floor(area.h / 2)];
   const bx = (tx ?? ent[0]), by = (ty ?? ent[1]);
@@ -589,52 +595,45 @@ function playerInput(p) {
   return { u: keys['arrowup'] || t.u, d: keys['arrowdown'] || t.d, l: keys['arrowleft'] || t.l, r: keys['arrowright'] || t.r };
 }
 function withinTether(p, nx, ny) { const o = p === player ? player2 : player; const cur = (p.x - o.x) ** 2 + (p.y - o.y) ** 2; const nd = (nx - o.x) ** 2 + (ny - o.y) ** 2; return nd <= MAXSEP * MAXSEP || nd <= cur; }
+// tile-based walkability (grid movement): is the CENTER of tile (tx,ty) enterable?
+const tileWalkable = (tx, ty, kind) => kind ? !solidForMount(tx * TILE + 8, ty * TILE + 8, kind) : !solidAt(tx * TILE + 8, ty * TILE + 8);
+// called the instant a character lands squarely on a tile
+function arriveTile(p) {
+  const cx = Math.round(p.x / TILE), cy = Math.round(p.y / TILE);
+  // keep sliding only if we landed on ice; stepping onto firm ground ends the glide
+  p.sliding = (!p.mount && area.map[cy] && area.map[cy][cx] === 'ice' && p.lastDir) ? p.lastDir : null;
+}
+// Pokémon-style grid stepping: a character is either tile-aligned (idle) or tweening to an adjacent tile.
 function updateOne(p, dt) {
-  const inp = playerInput(p); let dx = (inp.l ? -1 : 0) + (inp.r ? 1 : 0), dy = (inp.u ? -1 : 0) + (inp.d ? 1 : 0);
-  if (dx) { p.dir = 'side'; p.flip = dx < 0; } else if (dy < 0) p.dir = 'up'; else if (dy > 0) p.dir = 'down';
-  p.moving = dx !== 0 || dy !== 0;
-  const kind = p.mount?.kind, speed = kind ? MOUNT_SPEED[kind] : p.speed;
-  // ICE SLIDE (on foot): step onto ice → glide in that direction until you hit a wall or solid ground
-  if (!kind) {
-    const cx = Math.floor((p.x + 8) / TILE), cy = Math.floor((p.y + 8) / TILE);
-    if (!p.slide && area.map[cy] && area.map[cy][cx] === 'ice' && (dx || dy)) {
-      const sdx = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0, sdy = sdx ? 0 : Math.sign(dy);
-      const [tx, ty] = slideDest(cx, cy, sdx, sdy);
-      if (tx !== cx || ty !== cy) { p.slide = { dx: sdx, dy: sdy, tx, ty }; p.x = cx * TILE; p.y = cy * TILE; }
-    }
-    if (p.slide) {
-      const sp = 3.2, tX = p.slide.tx * TILE, tY = p.slide.ty * TILE;
-      if (p.slide.dx) { p.dir = 'side'; p.flip = p.slide.dx < 0; } else if (p.slide.dy < 0) p.dir = 'up'; else p.dir = 'down';
-      p.moving = true; p.step += 0.3;
-      p.x += Math.sign(tX - p.x) * Math.min(sp, Math.abs(tX - p.x));
-      p.y += Math.sign(tY - p.y) * Math.min(sp, Math.abs(tY - p.y));
-      if (p === player) { p.hist.unshift({ x: p.x, y: p.y }); if (p.hist.length > MAX_FOLLOWERS * FOLLOW_GAP + 4) p.hist.length = MAX_FOLLOWERS * FOLLOW_GAP + 4; }
-      if (Math.abs(p.x - tX) < 1 && Math.abs(p.y - tY) < 1) {   // arrived
-        p.x = tX; p.y = tY; const lt = [p.slide.tx, p.slide.ty]; p.slide = null;
-        const wrp = area.warps.find((w) => w.x === lt[0] && w.y === lt[1]);
-        if (wrp && state === 'play' && warpCooldown <= 0) warpTo(wrp.to, wrp.tx, wrp.ty); else p.onWarp = false;
-      }
-      return;   // the slide fully controls this frame
-    }
+  const inp = playerInput(p);
+  const kind = p.mount?.kind;
+  // 1) advance a step already in progress
+  if (p.dest) {
+    const spd = (p.sliding ? SLIDE_PXPS : kind ? MOUNT_STEP[kind] : STEP_PXPS) * dt;
+    const ex = p.dest.x - p.x, ey = p.dest.y - p.y;
+    if (Math.abs(ex) <= spd && Math.abs(ey) <= spd) { p.x = p.dest.x; p.y = p.dest.y; p.dest = null; arriveTile(p); }
+    else { p.x += Math.sign(ex) * spd; p.y += Math.sign(ey) * spd; }
+    p.step += spd / 7; p.moving = true;
   }
-  const stuck = !kind && solidAt(p.x + 8, p.y + 8);
-  const ok = (nx, ny) => kind ? canRide(nx, ny, kind) : (stuck || canMove(nx, ny));   // no leash — camera zooms to keep both in view
-  // push a boulder you walk into (on foot, one tile at a time)
-  if (p.moving && !kind && area.boulders && area.boulders.length) {
-    const ddx = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0, ddy = ddx ? 0 : Math.sign(dy);
-    const pcx = Math.floor((p.x + 8) / TILE), pcy = Math.floor((p.y + 8) / TILE);
-    const b = area.boulders.find((bl) => bl.x === pcx + ddx && bl.y === pcy + ddy);
-    if (b && b.cd <= 0 && !boulderBlocked(b.x + ddx, b.y + ddy, b)) {
-      b.x += ddx; b.y += ddy; b.cd = 0.16; p.x = pcx * TILE; p.y = pcy * TILE; sfx.plant(); checkBoulderGates();
-    }
-  }
-  if (p.moving) {
-    const len = Math.hypot(dx, dy) || 1, sx = (dx / len) * speed, sy = (dy / len) * speed;
-    if (ok(p.x + sx, p.y)) p.x += sx; if (ok(p.x, p.y + sy)) p.y += sy;
-    p.step += kind ? 0.28 : 0.18; checkWarp();
-    if (p === player) { p.hist.unshift({ x: p.x, y: p.y }); if (p.hist.length > MAX_FOLLOWERS * FOLLOW_GAP + 4) p.hist.length = MAX_FOLLOWERS * FOLLOW_GAP + 4; }
+  // 2) if idle, begin the next step (sliding forces the direction; otherwise read input — one axis only)
+  if (!p.dest) {
+    let dx = 0, dy = 0;
+    if (p.sliding) { dx = p.sliding[0]; dy = p.sliding[1]; }
+    else { dx = (inp.l ? -1 : 0) + (inp.r ? 1 : 0); dy = (inp.u ? -1 : 0) + (inp.d ? 1 : 0); if (dx && dy) dy = 0; }
+    if (dx || dy) {
+      if (dx) { p.dir = 'side'; p.flip = dx < 0; } else if (dy < 0) p.dir = 'up'; else p.dir = 'down';
+      const cx = Math.round(p.x / TILE), cy = Math.round(p.y / TILE), ntx = cx + dx, nty = cy + dy;
+      const b = (!kind && area.boulders) ? area.boulders.find((bl) => bl.x === ntx && bl.y === nty) : null;
+      let go = false;
+      if (b) {   // push it if the far side is clear
+        if (!boulderBlocked(b.x + dx, b.y + dy, b)) { b.x += dx; b.y += dy; sfx.plant(); checkBoulderGates(); go = true; }
+      } else if (tileWalkable(ntx, nty, kind)) go = true;
+      if (go) { p.dest = { x: ntx * TILE, y: nty * TILE }; p.lastDir = [dx, dy]; p.moving = true; }
+      else { p.moving = false; p.sliding = null; }   // bumped a wall (and a wall ends a slide)
+    } else p.moving = false;
   }
   if (p.mount) { p.mount.x = p.x; p.mount.y = p.y; p.mount.flip = p.flip; }
+  if (p === player) { p.hist.unshift({ x: p.x, y: p.y }); if (p.hist.length > MAX_FOLLOWERS * FOLLOW_GAP + 4) p.hist.length = MAX_FOLLOWERS * FOLLOW_GAP + 4; }
   if (current === 'farm') for (let i = groundEggs.length - 1; i >= 0; i--) { const g = groundEggs[i]; if ((g.x - p.x) ** 2 + (g.y - p.y) ** 2 < 12 * 12) { groundEggs.splice(i, 1); eggs++; stats.eggsCollected++; addXP(1); sfx.egg(); say('🥚 +1 egg'); checkQuests(); } }
 }
 function updatePlayers(dt) { updateOne(player, dt); updateOne(player2, dt); }
@@ -646,10 +645,28 @@ function menuPlayer() {
   return null;
 }
 const isNight = () => tod > 0.62 && tod < 0.92;
-function updateNPCs(dt) {
-  for (const n of area.npcs) { if (!n.wander) continue; n.think -= dt * 60;
-    if (n.think <= 0) { n.think = 60 + Math.random() * 90; if (Math.random() < 0.5) { n.vx = 0; n.vy = 0; } else { const a = Math.random() * Math.PI * 2; n.vx = Math.cos(a) * 0.4; n.vy = Math.sin(a) * 0.4; n.flip = n.vx < 0; n.dir = Math.abs(n.vx) > Math.abs(n.vy) ? 'side' : n.vy < 0 ? 'up' : 'down'; } }
-    if (n.vx || n.vy) { const nx = n.x + n.vx, ny = n.y + n.vy; if ((nx - n.home.x) ** 2 + (ny - n.home.y) ** 2 < 40 * 40 && canMove(nx, ny)) { n.x = nx; n.y = ny; n.frame = (clock * 6 | 0) % 2; } else { n.vx = -n.vx; n.vy = -n.vy; } } else n.frame = 1; }
+function updateNPCs(dt) {   // townsfolk amble on the grid too, staying near home
+  for (const n of area.npcs) {
+    if (!n.wander) { n.frame = 1; continue; }
+    if (n.dest) {   // finish a step
+      const spd = STEP_PXPS * 0.6 * dt, ex = n.dest.x - n.x, ey = n.dest.y - n.y;
+      if (Math.abs(ex) <= spd && Math.abs(ey) <= spd) { n.x = n.dest.x; n.y = n.dest.y; n.dest = null; n.frame = 1; }
+      else { n.x += Math.sign(ex) * spd; n.y += Math.sign(ey) * spd; n.frame = (clock * 6 | 0) % 2; }
+      continue;
+    }
+    n.think -= dt * 60;
+    if (n.think <= 0) {
+      n.think = 55 + Math.random() * 100;
+      if (Math.random() < 0.5) {   // step to a random adjacent tile within home range
+        const d = [[1, 0], [-1, 0], [0, 1], [0, -1]][(Math.random() * 4) | 0], ntx = Math.round(n.x / TILE) + d[0], nty = Math.round(n.y / TILE) + d[1];
+        const px = ntx * TILE, py = nty * TILE;
+        if ((px - n.home.x) ** 2 + (py - n.home.y) ** 2 < 40 * 40 && tileWalkable(ntx, nty, null)) {
+          if (d[0]) { n.dir = 'side'; n.flip = d[0] < 0; } else n.dir = d[1] < 0 ? 'up' : 'down';
+          n.dest = { x: px, y: py };
+        }
+      }
+    }
+  }
 }
 function updateDucks(dt) {
   const night = isNight();
@@ -754,7 +771,7 @@ function drawGates() {   // co-op pressure plates, boulder targets + boulders (w
       ctx.strokeStyle = `rgba(255,224,120,${pulse})`; ctx.lineWidth = 1.5; ctx.strokeRect(x + 2.5, y + 2.5, 11, 11);
     }
   }
-  for (const b of (area.boulders || [])) { const img = art.props.rock; if (img) ctx.drawImage(img, Math.round(b.x * TILE - camX), Math.round((b.y + 1) * TILE - img.height - camY)); }
+  for (const b of (area.boulders || [])) { const img = art.props.rock; if (img) ctx.drawImage(img, Math.round(b.bpx - camX), Math.round(b.bpy + TILE - img.height - camY)); }
 }
 function drawCharacter(p) {
   const set = art[p.sprite] || art.player;
@@ -995,8 +1012,8 @@ function loop(now) {
   if (state === 'map') { draw(); ctx.save(); ctx.scale(uiScale, uiScale); drawMap(); ctx.restore(); requestAnimationFrame(loop); return; }
   if (state === 'play') { clock += dt; tod = (tod + dt / DAY_LEN) % 1; if (toastT > 0) toastT -= dt; if (warpCooldown > 0) warpCooldown -= dt;
     if ((weatherT -= dt) <= 0) { const s = seasonFor(clock); weather = s === 'winter' ? (Math.random() < 0.6 ? 'snow' : 'clear') : (Math.random() < 0.3 ? 'rain' : 'clear'); weatherT = 28 + Math.random() * 34; }
-    if (area.boulders) for (const b of area.boulders) if (b.cd > 0) b.cd -= dt;
-    updatePlayers(dt); updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); checkGates(); checkQuests(); fitView(dt); }
+    if (area.boulders) for (const b of area.boulders) { const s = STEP_PXPS * dt; b.bpx += Math.sign(b.x * TILE - b.bpx) * Math.min(s, Math.abs(b.x * TILE - b.bpx)); b.bpy += Math.sign(b.y * TILE - b.bpy) * Math.min(s, Math.abs(b.y * TILE - b.bpy)); }
+    updatePlayers(dt); checkWarp(); updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); checkGates(); checkQuests(); fitView(dt); }
   else if (state === 'modal' || state === 'dialogue' || state === 'fishing') {
     // co-op: the player who ISN'T in a menu keeps wandering (warps are play-only, so the area can't swap underneath the busy one)
     clock += dt; if (toastT > 0) toastT -= dt;
