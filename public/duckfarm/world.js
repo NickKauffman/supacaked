@@ -180,7 +180,7 @@ export const AREA_DEFS = {
     name: 'Haley\'s Farm', biome: 'grass', w: 40, h: 30,
     exits: { south: 'quack' },
     buildings: [bld('barn', 'barn', 'Barn', 'barn', 17, 10, 2, 2, { name: 'Barn Keeper', pal: P.orange, lines: ['Welcome to your barn! Sell your eggs and crops, or buy a duck here.'] })],
-    npcs: [npc('Old Sage', 11, 16, P.grey, ['Mornin\', Haley. Feed your ducks and they\'ll lay eggs.', 'Head south down the road to reach Quacksborough and the wider world!'])],
+    npcs: [npc('Old Sage', 11, 16, P.grey, ['Mornin\'! Your crop field is fenced off to the east — stand on the soil and press A to plant a seed.', 'Feed your ducks and they\'ll lay eggs; sell eggs and crops at the Barn for coins.', 'When you\'re ready, follow the road south to Quacksborough and the wider world!'])],
     decor: [{ art: 'signpost', tx: 21, ty: 27, solid: false }, { art: 'bush', tx: 3, ty: 5, solid: false }, { art: 'rock', tx: 35, ty: 9, solid: false }],
     custom: ({ set, rect }) => {
       rect(6, 6, 9, 6, 'water'); for (let x = 5; x < 16; x++) { set(x, 5, 'path'); set(x, 12, 'path'); } for (let y = 5; y < 13; y++) { set(5, y, 'path'); set(15, y, 'path'); }

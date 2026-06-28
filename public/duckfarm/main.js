@@ -28,6 +28,7 @@ let crops, groundEggs, ducks;                 // farm-only entities
 let mounts, walking;                          // mounts (pelican/ostrich/penguin) + flock-follow toggle
 let coins, eggs, inv, level, xp, discovered, stats, questIndex, selectedCrop, lastStipendDay;
 let visitedAreas;                              // base areas the players have entered (for travel quests)
+let metNPCs;                                    // names of townsfolk talked to (for "meet ___" quests)
 let fishInv, fishSeen, fishDonated;            // fishing inventory + collection + museum
 let player, player2, clock, tod;
 const bothPlayers = () => [player, player2];
@@ -52,7 +53,7 @@ function freshState() {
   crops = new Map(); groundEggs = []; ducks = []; mounts = []; walking = false;
   coins = 10; eggs = 0; inv = {}; level = 1; xp = 0; discovered = new Set();
   stats = { planted: 0, harvested: 0, fed: 0, eggsCollected: 0, sold: 0, berryHarvest: 0, caught: 0, donated: 0, rode: 0 };
-  fishInv = {}; fishSeen = new Set(); fishDonated = new Set(); visitedAreas = new Set(['farm']);
+  fishInv = {}; fishSeen = new Set(); fishDonated = new Set(); visitedAreas = new Set(['farm']); metNPCs = new Set();
   questIndex = 0; selectedCrop = 'wheat'; lastStipendDay = -1; fishing = null;
   player = { name: 'Haley', sprite: 'player', x: 16 * TILE, y: 16 * TILE, dir: 'down', flip: false, speed: 1.4, moving: false, step: 0, mount: null, hist: [] };
   player2 = { name: 'Nick', sprite: 'player2', x: 18 * TILE, y: 16 * TILE, dir: 'down', flip: false, speed: 1.4, moving: false, step: 0, mount: null, hist: [] };
@@ -74,7 +75,7 @@ function save() {
     const cur = current.startsWith('int:') ? (area.warps[0]?.to || 'farm') : current;
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       current: cur, farmMap: areaCache.farm?.map, crops: [...crops.entries()], groundEggs,
-      coins, eggs, inv, level, xp, discovered: [...discovered], stats, questIndex, selectedCrop, lastStipendDay, clock, tod, walking, visitedAreas: [...visitedAreas],
+      coins, eggs, inv, level, xp, discovered: [...discovered], stats, questIndex, selectedCrop, lastStipendDay, clock, tod, walking, visitedAreas: [...visitedAreas], metNPCs: [...metNPCs],
       fishInv, fishSeen: [...fishSeen], fishDonated: [...fishDonated],
       player: { x: player.x, y: player.y, dir: player.dir, flip: player.flip },
       player2: { x: player2.x, y: player2.y, dir: player2.dir, flip: player2.flip },
@@ -94,6 +95,7 @@ function load() {
   fishInv = s.fishInv || {}; fishSeen = new Set(s.fishSeen || []); fishDonated = new Set(s.fishDonated || []); fishing = null;
   if (!stats.caught) stats.caught = 0; if (!stats.donated) stats.donated = 0; if (!stats.rode) stats.rode = 0;
   visitedAreas = new Set(s.visitedAreas && s.visitedAreas.length ? s.visitedAreas : ['farm']); visitedAreas.add(current);
+  metNPCs = new Set(s.metNPCs || []);
   player = { name: 'Haley', sprite: 'player', ...s.player, speed: 1.4, moving: false, step: 0, mount: null, hist: [] };
   player2 = { name: 'Nick', sprite: 'player2', x: 18 * TILE, y: 16 * TILE, dir: 'down', flip: false, ...(s.player2 || {}), speed: 1.4, moving: false, step: 0, mount: null, hist: [] };
   walking = s.walking || false;
@@ -137,6 +139,7 @@ function addXP(n) {
 function statVal(q) {
   const s = q.stat;
   if (s === 'visit') return visitedAreas.has(q.area) ? 1 : 0;
+  if (s === 'met') return metNPCs.has(q.who) ? 1 : 0;
   if (s === 'places') return visitedAreas.size;
   return s === 'ducks' ? ducks.length : s === 'level' ? level : s === 'coins' ? coins : s === 'breeds' ? discovered.size : (stats[s] || 0);
 }
@@ -171,7 +174,9 @@ addEventListener('keydown', (e) => {
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
 });
 addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
-function startGame(cont) { if (cont && hasSave()) { try { load(); } catch { freshState(); } } else freshState(); buildMode = false; if ($('dialogue')) $('dialogue').style.display = 'none'; if ($('modal')) $('modal').style.display = 'none'; state = 'play'; }
+function startGame(cont) { if (cont && hasSave()) { try { load(); } catch { freshState(); } } else freshState(); buildMode = false; if ($('dialogue')) $('dialogue').style.display = 'none'; if ($('modal')) $('modal').style.display = 'none'; state = 'play';
+  if (!cont || !hasSave()) { toast = '🦆 Welcome! Joystick to move · A to act. Head to the fenced field and plant a crop!'; toastT = 7; }   // first-run onboarding
+}
 function cycleSeed() { const u = unlockedCrops(), i = u.indexOf(selectedCrop); selectedCrop = u[(i + 1) % u.length]; say(`seed: ${CROPS[selectedCrop].name}`); }
 
 // ---------- build ----------
@@ -274,7 +279,8 @@ function checkWarp() {
     const wrp = area.warps.find((w) => w.x === tx && w.y === ty);
     if (!wrp) { p.onWarp = false; continue; }
     if (p.onWarp) continue;            // already standing on it (e.g. just arrived) — wait until they leave
-    p.onWarp = true; warpTo(wrp.to, wrp.tx, wrp.ty); return;
+    p.onWarp = true;                   // mark on-warp even mid-menu so closing a menu can't auto-trigger it
+    if (state === 'play') { warpTo(wrp.to, wrp.tx, wrp.ty); return; }   // but only actually travel during play
   }
 }
 function placeP(p, tx, ty) { p.x = tx * TILE; p.y = ty * TILE; if (solidAt(p.x + 8, p.y + 8)) { const wlk = nearestWalkable(p.x, p.y); p.x = wlk.x; p.y = wlk.y; } p.moving = false; p.hist = []; if (p.mount) { p.mount.area = current; p.mount.x = p.x; p.mount.y = p.y; } }
@@ -333,7 +339,7 @@ function interact(p = player) {
 }
 
 // ---------- dialogue ----------
-function openDialogue(name, lines) { dlg = { name, lines }; dlgI = 0; sfx.talk(); state = 'dialogue'; renderDialogue(); }
+function openDialogue(name, lines) { dlg = { name, lines }; dlgI = 0; if (name) { metNPCs.add(name); checkQuests(); } sfx.talk(); state = 'dialogue'; renderDialogue(); }
 function advanceDialogue() { dlgI++; if (!dlg || dlgI >= dlg.lines.length) { $('dialogue').style.display = 'none'; dlg = null; state = 'play'; return; } sfx.talk(); renderDialogue(); }
 function renderDialogue() { $('dlgName').textContent = dlg.name; $('dlgText').textContent = dlg.lines[dlgI]; $('dlgHint').textContent = dlgI < dlg.lines.length - 1 ? '▸ SPACE' : '✓ SPACE'; $('dialogue').style.display = 'block'; }
 
@@ -436,6 +442,13 @@ function updateOne(p, dt) {
   if (current === 'farm') for (let i = groundEggs.length - 1; i >= 0; i--) { const g = groundEggs[i]; if ((g.x - p.x) ** 2 + (g.y - p.y) ** 2 < 12 * 12) { groundEggs.splice(i, 1); eggs++; stats.eggsCollected++; addXP(1); sfx.egg(); say('🥚 +1 egg'); checkQuests(); } }
 }
 function updatePlayers(dt) { updateOne(player, dt); updateOne(player2, dt); }
+// which player is currently occupied by a menu/dialogue/fishing (so the OTHER can still move)
+function menuPlayer() {
+  if (state === 'modal') return modalOwner === 1 ? player2 : player;
+  if (state === 'fishing') return fishing ? fishing.owner : null;
+  if (state === 'dialogue') return actingPlayer;
+  return null;
+}
 const isNight = () => tod > 0.62 && tod < 0.92;
 function updateNPCs(dt) {
   for (const n of area.npcs) { if (!n.wander) continue; n.think -= dt * 60;
@@ -760,7 +773,14 @@ function loop(now) {
   if (state === 'play') { clock += dt; tod = (tod + dt / DAY_LEN) % 1; if (toastT > 0) toastT -= dt; if (warpCooldown > 0) warpCooldown -= dt;
     if ((weatherT -= dt) <= 0) { const s = seasonFor(clock); weather = s === 'winter' ? (Math.random() < 0.6 ? 'snow' : 'clear') : (Math.random() < 0.3 ? 'rain' : 'clear'); weatherT = 28 + Math.random() * 34; }
     updatePlayers(dt); updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); checkQuests(); fitView(dt); }
-  if (state === 'fishing') { updateFishing(dt); updateNPCs(dt); }
+  else if (state === 'modal' || state === 'dialogue' || state === 'fishing') {
+    // co-op: the player who ISN'T in a menu keeps wandering (warps are play-only, so the area can't swap underneath the busy one)
+    clock += dt; if (toastT > 0) toastT -= dt;
+    const busy = menuPlayer(); if (busy) busy.moving = false;
+    for (const p of bothPlayers()) if (p !== busy) updateOne(p, dt);
+    if (state === 'fishing') updateFishing(dt);
+    updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); fitView(dt);
+  }
   draw(); if (state === 'fishing') { ctx.save(); ctx.scale(uiScale, uiScale); drawFishing(); ctx.restore(); } updatePanel(); requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
@@ -844,7 +864,7 @@ setupTouch();
 
 // debug
 window.__DF = {
-  get s() { return { state, current, coins, eggs, inv, level, xp, ducks, mounts, walking, crops, groundEggs, discovered, stats, questIndex, selectedCrop, player, player2, clock, tod, area, fishInv, fishSeen, fishDonated, fishing, visitedAreas }; },
+  get s() { return { state, current, coins, eggs, inv, level, xp, ducks, mounts, walking, crops, groundEggs, discovered, stats, questIndex, selectedCrop, player, player2, clock, tod, area, fishInv, fishSeen, fishDonated, fishing, visitedAreas, metNPCs }; },
   startGame, freshState, interact, openModal, closeModal, openDialogue, warpTo, cycleSeed, addXP, checkQuests, BUILDING_ACTIONS,
   spawnMount, spawnDuck, toggleRide, toggleWalk, startFishing, hookFish, touchDir,
   ctrl: ctrlInput, primaryAction, hasSave, dfMenu, enableAudio, snapshot: controllerSnapshot, get state() { return state; },
