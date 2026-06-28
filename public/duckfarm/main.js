@@ -263,6 +263,16 @@ addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 function startGame(cont) { if (cont && hasSave()) { try { load(); } catch { freshState(); } } else freshState(); buildMode = false; if ($('dialogue')) $('dialogue').style.display = 'none'; if ($('modal')) $('modal').style.display = 'none'; state = 'play';
   if (!cont || !hasSave()) { toast = '🦆 Welcome! Joystick to move · A to act. Head to the fenced field and plant a crop!'; toastT = 7; }   // first-run onboarding
 }
+// relay entry: with a save, offer Continue / New before handing over control
+function startChoice() {
+  if (!hasSave()) { startGame(false); return; }
+  try { load(); } catch (e) { freshState(); }   // load the world so the engine is valid behind the choice modal
+  buildMode = false; if ($('dialogue')) $('dialogue').style.display = 'none';
+  openModal('🦆 Welcome back to the farm!', 'Pick up where you left off, or start a brand-new adventure?', [
+    { label: '▶ Continue saved game', onClick: () => closeModal() },
+    { label: '🆕 New game…', onClick: () => pauseMenu(true) },
+  ]);
+}
 function cycleSeed() { const u = unlockedCrops(), i = u.indexOf(selectedCrop); selectedCrop = u[(i + 1) % u.length]; say(`seed: ${CROPS[selectedCrop].name}`); }
 
 // ---------- build ----------
@@ -1080,7 +1090,7 @@ setupTouch();
 // debug
 window.__DF = {
   get s() { return { state, current, coins, eggs, inv, level, xp, ducks, mounts, walking, crops, groundEggs, discovered, stats, questIndex, selectedCrop, player, player2, clock, tod, area, fishInv, fishSeen, fishDonated, fishing, visitedAreas, metNPCs, unlockedGates }; },
-  startGame, freshState, interact, openModal, closeModal, openDialogue, warpTo, cycleSeed, addXP, checkQuests, BUILDING_ACTIONS,
+  startGame, startChoice, freshState, interact, openModal, closeModal, openDialogue, warpTo, cycleSeed, addXP, checkQuests, BUILDING_ACTIONS,
   spawnMount, spawnDuck, toggleRide, toggleWalk, startFishing, hookFish, touchDir,
   ctrl: ctrlInput, primaryAction, hasSave, dfMenu, enableAudio, snapshot: controllerSnapshot, get state() { return state; },
   tick: (n) => loop(n || performance.now()),   // debug: force one frame (loop is rAF-throttled in bg tabs)

@@ -116,7 +116,7 @@
       ['pointerdown', 'keydown', 'touchstart'].forEach((ev) => window.addEventListener(ev, armAudio, { passive: true }));
       setInterval(updateSoundCue, 800);
 
-      function startGame() { if (!ready || started) return; started = true; window.__DF.startGame(window.__DF.hasSave()); $('lobby').classList.add('hide'); updateSoundCue(); broadcast(); }
+      function startGame() { if (!ready || started) return; started = true; (window.__DF.startChoice ? window.__DF.startChoice() : window.__DF.startGame(window.__DF.hasSave())); $('lobby').classList.add('hide'); updateSoundCue(); broadcast(); }
       function recompute() {
         const conn = [...roster.values()].filter((p) => p.connected).sort((a, b) => a.id - b.id);
         idToIdx = {}; conn.forEach((p, i) => { if (i < 2) idToIdx[p.id] = i; });
