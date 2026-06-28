@@ -29,6 +29,7 @@ let mounts, walking;                          // mounts (pelican/ostrich/penguin
 let coins, eggs, inv, level, xp, discovered, stats, questIndex, selectedCrop, lastStipendDay;
 let visitedAreas;                              // base areas the players have entered (for travel quests)
 let metNPCs;                                    // names of townsfolk talked to (for "meet ___" quests)
+let unlockedGates;                              // ids of region gates the players have opened
 let fishInv, fishSeen, fishDonated;            // fishing inventory + collection + museum
 let player, player2, clock, tod;
 const bothPlayers = () => [player, player2];
@@ -39,16 +40,69 @@ let fishing = null;                            // active fishing minigame
 let muted = false;
 let weather = 'clear', weatherT = 25;          // 'clear' | 'rain' | 'snow'
 
+// ===================== REGION GATES =====================
+// The world is locked. Each gate seals one exit until the players solve a region
+// challenge. Cozy systems (farming, ducks) become the keys that open the way forward.
+const GATES = {
+  farm: [{
+    id: 'toll_quack', kind: 'toll',
+    barrier: [[19, 28], [20, 28], [21, 28]], restore: 'path',   // the south bridge
+    hintAt: [20, 27], hint: '🌉 Bridge closed — talk to the keeper',
+    keeper: { tx: 23, ty: 27, name: 'Tolliver', crops: 3, coins: 40,
+      pal: { hair: '#5a3d20', shirt: '#8a8f98', shirtL: '#b3b8c0', shirtD: '#646a73', hat: '#e0504a', hatL: '#ff8a78', hatD: '#b8362f' },
+      lines: ['Ho there! This bridge to Quacksborough is mine to open.', 'Bring me 3 harvested crops (or 40 coins) and the way is yours!'],
+      paid: 'A fine harvest — much obliged! The bridge is open. Off you go!' },
+  }],
+  quack: [{
+    id: 'levers_maple', kind: 'levers',
+    barrier: [[17, 28], [18, 28], [19, 28], [20, 28]], restore: 'path',   // the south forest gate
+    plates: [[9, 16], [28, 16]],
+    hintAt: [18, 27], hint: '⛓️ Gate barred — stand on BOTH stone tiles at once',
+  }],
+};
+function consumeCrops(n) { let left = n; for (const id of CROP_ORDER) { const t = Math.min(left, inv[id] || 0); inv[id] = (inv[id] || 0) - t; left -= t; if (left <= 0) break; } }
+function unlockGate(id) {
+  if (unlockedGates.has(id)) return;
+  unlockedGates.add(id);
+  for (const aid in areaCache) {                       // open the gate in every built copy of its area
+    const a = areaCache[aid]; const g = (a.gates || []).find((x) => x.id === id);
+    if (!g || !g.locked) continue;
+    g.locked = false;
+    if (g._orig) for (const [x, y, t] of g._orig) a.map[y][x] = t; else for (const [x, y] of g.barrier) a.map[y][x] = g.restore || 'path';
+    if (g.kind === 'toll') { const k = a.npcs.find((n) => n.gateId === id); if (k) { k.action = null; k.lines = [g.keeper.paid || 'The way is open!']; } }
+  }
+  sfx.warp();
+}
+
 function prepArea(a) {
   a.blocked = new Set();
   for (const b of a.buildings) for (let y = b.ty; y < b.ty + b.h; y++) for (let x = b.tx; x < b.tx + b.w; x++) a.blocked.add(x + ',' + y);
   for (const p of a.props) if (p.solid) for (let y = p.ty; y < p.ty + p.h; y++) for (let x = p.tx; x < p.tx + p.w; x++) a.blocked.add(x + ',' + y);
+  a.gates = [];
+  for (const g of (GATES[a.name] || [])) {
+    const locked = !unlockedGates.has(g.id), gg = { ...g, locked };
+    a.gates.push(gg);
+    if (locked) {
+      gg._orig = g.barrier.map(([x, y]) => [x, y, a.map[y][x]]);
+      for (const [x, y] of g.barrier) a.map[y][x] = 'fence';   // close it off (fence is solid)
+      if (g.kind === 'toll') a.npcs.push({ name: g.keeper.name, tx: g.keeper.tx, ty: g.keeper.ty, dir: 'down', pal: g.keeper.pal, lines: g.keeper.lines, action: 'toll', gateId: g.id });
+    }
+  }
   for (const n of a.npcs) { n.frames = personFrames(n.pal); n.x = n.tx * TILE; n.y = n.ty * TILE; n.home = { x: n.x, y: n.y }; n.frame = 0; n.flip = false; n.vx = 0; n.vy = 0; n.think = Math.random() * 60; }
   return a;
+}
+function checkGates() {   // co-op lever gates open when both plates are covered
+  for (const g of (area.gates || [])) {
+    if (g.kind !== 'levers' || !g.locked) continue;
+    let covered = 0;
+    for (const [px, py] of g.plates) if (bothPlayers().some((p) => Math.floor((p.x + 8) / TILE) === px && Math.floor((p.y + 8) / TILE) === py)) covered++;
+    if (covered >= g.plates.length) { unlockGate(g.id); say('⛓️ The gate grinds open!'); }
+  }
 }
 function getArea(id) { if (!areaCache[id]) areaCache[id] = prepArea(rawArea(id)); return areaCache[id]; }
 
 function freshState() {
+  unlockedGates = new Set();   // must exist before getArea (prepArea reads it to place gate barriers)
   areaCache = {}; current = 'farm'; area = getArea('farm');
   crops = new Map(); groundEggs = []; ducks = []; mounts = []; walking = false;
   coins = 10; eggs = 0; inv = {}; level = 1; xp = 0; discovered = new Set();
@@ -75,7 +129,7 @@ function save() {
     const cur = current.startsWith('int:') ? (area.warps[0]?.to || 'farm') : current;
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       current: cur, farmMap: areaCache.farm?.map, crops: [...crops.entries()], groundEggs,
-      coins, eggs, inv, level, xp, discovered: [...discovered], stats, questIndex, selectedCrop, lastStipendDay, clock, tod, walking, visitedAreas: [...visitedAreas], metNPCs: [...metNPCs],
+      coins, eggs, inv, level, xp, discovered: [...discovered], stats, questIndex, selectedCrop, lastStipendDay, clock, tod, walking, visitedAreas: [...visitedAreas], metNPCs: [...metNPCs], unlockedGates: [...unlockedGates],
       fishInv, fishSeen: [...fishSeen], fishDonated: [...fishDonated],
       player: { x: player.x, y: player.y, dir: player.dir, flip: player.flip },
       player2: { x: player2.x, y: player2.y, dir: player2.dir, flip: player2.flip },
@@ -87,6 +141,7 @@ function save() {
 const hasSave = () => !!localStorage.getItem(SAVE_KEY);
 function load() {
   const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+  unlockedGates = new Set(s.unlockedGates || []);   // set BEFORE getArea so prepArea applies the right barriers
   areaCache = {}; getArea('farm'); if (s.farmMap) areaCache.farm.map = s.farmMap;
   current = (s.current && AREA_DEFS[s.current]) ? s.current : 'farm'; area = getArea(current);
   crops = new Map(s.crops); groundEggs = s.groundEggs; coins = s.coins; eggs = s.eggs; inv = s.inv || {};
@@ -375,6 +430,14 @@ function doSellCrops(mult) { const v = cropValue(mult); if (!v) return; coins +=
 function doSellFish() { const v = fishValue(); if (!v) return; coins += Math.round(v * fMult()); FISH_ORDER.forEach((id) => fishInv[id] = 0); stats.sold++; sfx.coin(); checkQuests(); }
 
 const BUILDING_ACTIONS = {
+  toll: (npc) => {   // pay the gatekeeper in crops or coins to open a bridge
+    const g = (area.gates || []).find((x) => x.id === npc.gateId);
+    if (!g || !g.locked) { openDialogue(npc.name, [g ? (g.keeper.paid || 'The way is open!') : 'Safe travels!']); return; }
+    const k = g.keeper, have = cropCount();
+    if (have >= k.crops) { consumeCrops(k.crops); unlockGate(g.id); openDialogue(npc.name, [k.paid]); }
+    else if (coins >= k.coins) { coins -= k.coins; unlockGate(g.id); sfx.coin(); openDialogue(npc.name, [k.paid]); }
+    else openDialogue(npc.name, [`${k.crops} harvested crops or ${k.coins} coins, and the bridge is yours. You have ${have} crops and ${coins} coins.`]);
+  },
   barnshop: (src) => openModal(`🛖 ${src?.shopTitle || 'The Barn'}`, `You have <b>${coins}</b> 🪙${festivalDay() ? ' — <i>festival +25%!</i>' : ''}`, [
     { label: `Sell ${eggs} eggs  →  +${Math.round(eggs * EGG_PRICE * fMult())} 🪙`, disabled: !eggs, onClick: () => { doSellEggs(EGG_PRICE); BUILDING_ACTIONS.barnshop(src); } },
     { label: `Sell ${cropCount()} crops  →  +${Math.round(cropValue() * fMult())} 🪙`, disabled: !cropCount(), onClick: () => { doSellCrops(1); BUILDING_ACTIONS.barnshop(src); } },
@@ -541,6 +604,19 @@ function fitView(dt) {
 }
 function shadow(x, y, rx = 5) { ctx.save(); ctx.fillStyle = 'rgba(20,16,30,0.22)'; ctx.beginPath(); ctx.ellipse(Math.round(x - camX + 8), Math.round(y - camY + 14), rx, rx * 0.42, 0, 0, 7); ctx.fill(); ctx.restore(); }
 function blit(img, x, y, flip = false) { const sx = Math.round(x - camX), sy = Math.round(y - camY); if (flip) { ctx.save(); ctx.translate(sx + TILE, sy); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0); ctx.restore(); } else ctx.drawImage(img, sx, sy); }
+function drawGates() {   // co-op pressure plates (world space)
+  for (const g of (area.gates || [])) {
+    if (!g.locked || g.kind !== 'levers') continue;
+    for (const [px, py] of g.plates) {
+      const occ = bothPlayers().some((p) => Math.floor((p.x + 8) / TILE) === px && Math.floor((p.y + 8) / TILE) === py);
+      const x = Math.round(px * TILE - camX), y = Math.round(py * TILE - camY);
+      ctx.fillStyle = occ ? 'rgba(120,230,150,0.9)' : 'rgba(150,150,170,0.65)';
+      ctx.fillRect(x + 2, y + 2, 12, 12);
+      ctx.fillStyle = occ ? '#eaffd0' : '#c8ccd8'; ctx.fillRect(x + 4, y + 4, 8, 8);
+      ctx.fillStyle = occ ? '#3f9e54' : '#7a808f'; ctx.fillRect(x + 6, y + 6, 4, 4);
+    }
+  }
+}
 function drawCharacter(p) {
   const set = art[p.sprite] || art.player;
   const f = p.moving ? set[p.dir][Math.floor(p.step) % 4] : set[p.dir][1];
@@ -578,6 +654,7 @@ function draw() {
     }
     if (current === 'farm') { const c = crops.get(x + ',' + y); if (c) ctx.drawImage(art.crops[c.type][cropStage(c)], px, py); }
   }
+  drawGates();   // ground-level gate plates
 
   // depth-sorted entities: props, buildings, npcs, ducks, player, eggs
   const ents = [];
@@ -724,6 +801,7 @@ setInterval(() => { if (actx && !muted && state !== 'title') playBar(); }, 2400)
 function drawLabels() {
   for (const b of area.buildings) { const img = resolveBuilding(b.art); if (!img) continue; const cx = sx((b.tx + b.w / 2) * TILE); const topY = sy((b.ty + b.h) * TILE - img.height) - 11; if (cx > -40 && cx < UW + 40 && topY > -12) label(b.name, cx, topY, '#ffe9b0'); }
   for (const n of area.npcs) { const d2 = (n.x - player.x) ** 2 + (n.y - player.y) ** 2; if (d2 < 40 * 40) label(n.name, sx(n.x + 8), sy(n.y) - 12, '#cfe6ff'); }
+  for (const g of (area.gates || [])) if (g.locked && g.hint) { const [bx, by] = g.hintAt || g.barrier[0]; const cx = sx(bx * TILE + 8), cy = sy(by * TILE) - 12; if (cx > -80 && cx < UW + 80 && cy > -12) label(g.hint, cx, cy, '#ffd24a'); }
   // interaction prompt
   const b = nearestBuilding(), n = !b && nearestNPC();
   if ((b || n) && state === 'play') { ctx.font = '8px monospace'; ctx.textAlign = 'center'; const tx = 'SPACE'; const w = ctx.measureText(tx).width + 10; ctx.fillStyle = 'rgba(40,30,50,0.85)'; ctx.fillRect(UW / 2 - w / 2, 18, w, 12); ctx.fillStyle = '#ffe25a'; ctx.textBaseline = 'middle'; ctx.fillText(tx, UW / 2, 24); ctx.textAlign = 'left'; }
@@ -772,7 +850,7 @@ function loop(now) {
   if (state === 'map') { draw(); ctx.save(); ctx.scale(uiScale, uiScale); drawMap(); ctx.restore(); requestAnimationFrame(loop); return; }
   if (state === 'play') { clock += dt; tod = (tod + dt / DAY_LEN) % 1; if (toastT > 0) toastT -= dt; if (warpCooldown > 0) warpCooldown -= dt;
     if ((weatherT -= dt) <= 0) { const s = seasonFor(clock); weather = s === 'winter' ? (Math.random() < 0.6 ? 'snow' : 'clear') : (Math.random() < 0.3 ? 'rain' : 'clear'); weatherT = 28 + Math.random() * 34; }
-    updatePlayers(dt); updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); checkQuests(); fitView(dt); }
+    updatePlayers(dt); updateNPCs(dt); if (current === 'farm') updateDucks(dt); updateMounts(dt); checkGates(); checkQuests(); fitView(dt); }
   else if (state === 'modal' || state === 'dialogue' || state === 'fishing') {
     // co-op: the player who ISN'T in a menu keeps wandering (warps are play-only, so the area can't swap underneath the busy one)
     clock += dt; if (toastT > 0) toastT -= dt;
@@ -864,10 +942,11 @@ setupTouch();
 
 // debug
 window.__DF = {
-  get s() { return { state, current, coins, eggs, inv, level, xp, ducks, mounts, walking, crops, groundEggs, discovered, stats, questIndex, selectedCrop, player, player2, clock, tod, area, fishInv, fishSeen, fishDonated, fishing, visitedAreas, metNPCs }; },
+  get s() { return { state, current, coins, eggs, inv, level, xp, ducks, mounts, walking, crops, groundEggs, discovered, stats, questIndex, selectedCrop, player, player2, clock, tod, area, fishInv, fishSeen, fishDonated, fishing, visitedAreas, metNPCs, unlockedGates }; },
   startGame, freshState, interact, openModal, closeModal, openDialogue, warpTo, cycleSeed, addXP, checkQuests, BUILDING_ACTIONS,
   spawnMount, spawnDuck, toggleRide, toggleWalk, startFishing, hookFish, touchDir,
   ctrl: ctrlInput, primaryAction, hasSave, dfMenu, enableAudio, snapshot: controllerSnapshot, get state() { return state; },
+  tick: (n) => loop(n || performance.now()),   // debug: force one frame (loop is rAF-throttled in bg tabs)
   get audioOn() { return !!actx && actx.state === 'running'; },
   setCoins: (v) => { coins = v; }, setEggs: (v) => { eggs = v; }, setInv: (o) => { inv = o; }, setLevel: (v) => { level = v; },
   set tod(v) { tod = v; }, get tod() { return tod; }, set clock(v) { clock = v; }, get clock() { return clock; },
