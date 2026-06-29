@@ -602,6 +602,7 @@ function arriveTile(p) {
   const cx = Math.round(p.x / TILE), cy = Math.round(p.y / TILE);
   // keep sliding only if we landed on ice; stepping onto firm ground ends the glide
   p.sliding = (!p.mount && area.map[cy] && area.map[cy][cx] === 'ice' && p.lastDir) ? p.lastDir : null;
+  checkWarp();   // fire the moment we're centered on a tile (catches walk-throughs that don't stop, e.g. dives)
 }
 // Pokémon-style grid stepping: a character is either tile-aligned (idle) or tweening to an adjacent tile.
 function updateOne(p, dt) {
@@ -775,7 +776,8 @@ function drawGates() {   // co-op pressure plates, boulder targets + boulders (w
 }
 function drawCharacter(p) {
   const set = art[p.sprite] || art.player;
-  const f = p.moving ? set[p.dir][Math.floor(p.step) % 4] : set[p.dir][1];
+  const frames = set[p.dir] || set.down;
+  const f = (p.moving ? frames[((Math.floor(p.step) % 4) + 4) % 4] : frames[1]) || frames[1];
   const dy = f.height - 16;   // taller sprites are anchored at the feet
   if (p.mount) { const k = p.mount.kind, lift = k === 'pelican' ? 4 : 0;
     shadow(p.x, p.y, k === 'ostrich' ? 6 : 5); blit(art[k][Math.floor(p.step) % 2], p.x, p.y - (MOUNT_H[k] - 16) - lift, p.flip); blit(f, p.x, p.y - RIDE_LIFT[k] - lift - dy, p.flip);
@@ -958,11 +960,14 @@ function drawLabels() {
   for (const b of area.buildings) { const img = resolveBuilding(b.art); if (!img) continue; const cx = sx((b.tx + b.w / 2) * TILE); const topY = sy((b.ty + b.h) * TILE - img.height) - 11; if (cx > -40 && cx < UW + 40 && topY > -12) label(b.name, cx, topY, '#ffe9b0'); }
   for (const n of area.npcs) { const d2 = (n.x - player.x) ** 2 + (n.y - player.y) ** 2; if (d2 < 40 * 40) label(n.name, sx(n.x + 8), sy(n.y) - 12, '#cfe6ff'); }
   for (const g of (area.gates || [])) {
-    if (g.kind === 'mount') { if (bothPlayers().some((p) => p.mount && p.mount.kind === g.need)) continue; }   // have the mount → no hint
-    else if (!g.locked) continue;
-    if (!g.hint) continue;
+    let txt = g.hint, col = '#ffd24a';
+    if (g.kind === 'mount') {                                  // always mark the dive spot; show "dive here!" once you can
+      txt = bothPlayers().some((p) => p.mount && p.mount.kind === g.need) ? `🐧 Dive here! (step onto the ${area.map[g.tile[1]][g.tile[0]] === 'water' ? 'hole' : 'spot'})` : g.hint;
+      col = bothPlayers().some((p) => p.mount && p.mount.kind === g.need) ? '#9fe0ff' : '#ffd24a';
+    } else if (!g.locked) continue;
+    if (!txt) continue;
     const [bx, by] = g.hintAt || g.barrier[0]; const cx = sx(bx * TILE + 8), cy = sy(by * TILE) - 12;
-    if (cx > -80 && cx < UW + 80 && cy > -12) label(g.hint, cx, cy, '#ffd24a');
+    if (cx > -80 && cx < UW + 80 && cy > -12) label(txt, cx, cy, col);
   }
   // interaction prompt
   const b = nearestBuilding(), n = !b && nearestNPC();
@@ -1007,7 +1012,7 @@ function drawTitle(now) {
 // ---------- loop ----------
 let last = performance.now();
 function loop(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;   // never negative (clock skew / tab wake)
   if (state === 'title') { drawTitle(now); requestAnimationFrame(loop); return; }
   if (state === 'map') { draw(); ctx.save(); ctx.scale(uiScale, uiScale); drawMap(); ctx.restore(); requestAnimationFrame(loop); return; }
   if (state === 'play') { clock += dt; tod = (tod + dt / DAY_LEN) % 1; if (toastT > 0) toastT -= dt; if (warpCooldown > 0) warpCooldown -= dt;
